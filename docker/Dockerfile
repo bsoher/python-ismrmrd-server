@@ -56,7 +56,8 @@ RUN mkdir -p /opt/code
 RUN echo "set positionlog" > ~/.nanorc
 
 # Python MRD library
-RUN pip3 install h5py==3.10.0 ismrmrd==1.14.1
+# orig RUN pip3 install h5py==3.10.0 ismrmrd==1.14.1
+RUN pip3 install --trusted-host pypi.org h5py==3.10.0 ismrmrd==1.14.1
 
 RUN cd /opt/code && \
     git clone https://github.com/ismrmrd/ismrmrd-python-tools.git && \
@@ -65,7 +66,18 @@ RUN cd /opt/code && \
 
 # matplotlib is used by rgb.py and provides various visualization tools including colormaps
 # pydicom is used by dicom2mrd.py to parse DICOM data
-RUN pip3 install --no-cache-dir matplotlib==3.8.2 pydicom==3.0.1
+# orig RUN pip3 install --no-cache-dir matplotlib==3.8.2 pydicom==3.0.1
+RUN pip3 install --trusted-host pypi.org --no-cache-dir matplotlib==3.8.2 pydicom==2.4.3 pynetdicom==2.0.2
+
+# bjs-start
+
+RUN pip3 install --trusted-host pypi.org --no-cache-dir numpy scipy configobj packaging
+RUN pip3 install --trusted-host pypi.org --no-cache-dir lmfit pypubsub nibabel nifti-mrs
+
+RUN pip3 install /opt/code/python-ismrmrd-server/Vespa_Suite-1.1.1rc1-py312-none-any.whl
+RUN rm /opt/code/python-ismrmrd-server/Vespa_Suite-1.1.1rc1-py312-none-any.whl
+
+# bjs-end
 
 # Cleanup files not required after installation
 RUN apt-get clean && \
