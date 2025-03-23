@@ -14,9 +14,9 @@ import signal
 import simplefft
 import invertcontrast
 import analyzeflow
-import spectroscopy
+#import spectroscopy
 #import epsi_inline
-import vespa.interfaces.inline.vespa_inline_engine as vie
+#import vespa.interfaces.inline.vespa_inline_engine as vie
 
 class Server:
     """
@@ -118,9 +118,9 @@ class Server:
             elif (config == "invertcontrast"):
                 logging.info("Starting invertcontrast processing based on config")
                 invertcontrast.process(connection, configAdditional, metadata)
-            elif (config == "spectroscopy"):
-                logging.info("Starting spectroscopy processing based on config")
-                spectroscopy.process(connection, configAdditional, metadata)
+#            elif (config == "spectroscopy"):
+#                logging.info("Starting spectroscopy processing based on config")
+#                spectroscopy.process(connection, configAdditional, metadata)
 #            elif (config == "epsi_inline"):
 #                logging.info("Starting epsi processing based on config")
 #                epsi_inline.process(connection, configAdditional, metadata)
