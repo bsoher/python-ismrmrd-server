@@ -296,6 +296,31 @@ def process_image(images, config, metadata):
 
     if True:
         
+
+        # From TEAMS mtg March 26, 2025 - Kelvin's Advice on min viable Image Header creation
+        #---------------------------------------------------------------------------------------
+        # Header data can be taken from a variety of existing sources: existing Image Header
+        # an existing Raw Data Header (but it needs to be updated before being returned to DB),
+        # even a single data Group object will give info needed to update a New Header. Once
+        # the new Header object is created and update, the min changes otherwise needed are 
+        # the FOV and image_index, (and optionally image_series_index). These last two values 
+        # can be set in whatever order and will be sorted out later. The image_series_index can
+        # even be non-sequential (ie. a group of 1s and then a group of 7s) because they will 
+        # just be sorted for unique values when returned to FIRE injector.
+        #
+        # from line 220 invertcontrast.py ['phs' is the counter for that example]
+        #
+        #  tmpImg = ismrmrd.Image.from_array(data[...,phs], transpose=False)
+        #  tmpImg.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), rawHead[phs]))
+        #  tmpImg.field_of_view = (ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.x), 
+        #                          ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y), 
+        #                          ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
+        #  tmpImg.image_index = phs
+        #
+        # In this example, and new Image (including a default Header) is created from data array,
+        # then the Header updated from the rawHead object, the FOV updated and image_index set.
+        #
+
         dat = []
         for data in [bdat1, bdat2, bdat2b, bdat2c, bxvals]:
             data = np.load(io.BytesIO(zlib.decompress(base64.b64decode(data))))
@@ -329,6 +354,7 @@ def process_image(images, config, metadata):
         tmpHead.channels   = 3  # RGB "channels".  This is set by from_array, but need to be explicit as we're copying the old header instead
         tmpHead.field_of_view = (ctypes.c_float( imgX), ctypes.c_float( imgY), ctypes.c_float(10))  # Dummy FOV because the spectroscopy FOV isn't appropriate
         tmpHead.matrix_size   = (ctypes.c_ushort(imgX), ctypes.c_ushort(imgY), ctypes.c_ushort(1))
+        tmpHead.image_index = 3
         
         xtraImg.setHead(tmpHead)
 
@@ -347,7 +373,6 @@ def process_image(images, config, metadata):
             tmpMeta['ImageColumnDir'] = ["{:.18f}".format(tmpHead.phase_dir[0]), "{:.18f}".format(tmpHead.phase_dir[1]), "{:.18f}".format(tmpHead.phase_dir[2])]
 
         xtraImg.attribute_string   = tmpMeta.serialize()      
-        xtraImg.slice = 3  
         
         imagesOut.append(xtraImg)
 
@@ -386,6 +411,7 @@ def process_image(images, config, metadata):
         tmpHead3.channels   = 3  # RGB "channels".  This is set by from_array, but need to be explicit as we're copying the old header instead
         tmpHead3.field_of_view = (ctypes.c_float( imgX), ctypes.c_float( imgY), ctypes.c_float(10))  # Dummy FOV because the spectroscopy FOV isn't appropriate
         tmpHead3.matrix_size   = (ctypes.c_ushort(imgX), ctypes.c_ushort(imgY), ctypes.c_ushort(1))
+        tmpHead.image_index = 4
         
         xtraImg3.setHead(tmpHead3)
 
@@ -404,7 +430,6 @@ def process_image(images, config, metadata):
             tmpMeta3['ImageColumnDir'] = ["{:.18f}".format(tmpHead3.phase_dir[0]), "{:.18f}".format(tmpHead3.phase_dir[1]), "{:.18f}".format(tmpHead3.phase_dir[2])]
 
         xtraImg3.attribute_string   = tmpMeta3.serialize()      
-        xtraImg3.slice = 3  
         
         imagesOut.append(xtraImg3)
 
