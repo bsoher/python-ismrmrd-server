@@ -17,14 +17,15 @@ import matplotlib.pyplot as plt
 
 # bjs imports
 from logging import FileHandler, Formatter
-from pymidas_inline.epsi.do_epsi import do_init, do_epsi
+#from pymidas_inline.epsi.do_epsi import do_init, do_epsi
 
-BJS_DEBUG_PATH = "D:\\temp\\debug_fire\\"
+# BJS_DEBUG_PATH = "D:\\temp\\debug_fire\\"
+BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
 # Folder for debug output files
-# debugFolder = "/tmp/share/debug"
-debugFolder = "D:\\temp\\debug_fire"
+debugFolder = "/tmp/share/debug"
+# debugFolder = "D:\\temp\\debug_fire"
 
 logger_bjs = logging.getLogger("bjs_log")
 logger_bjs.setLevel(logging.DEBUG)
@@ -469,11 +470,11 @@ def process_init_epsi(block, group, config, metadata):
     if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in Init data group")
 
-    if group[0].idx.contrast == 1:
-        water_init = np.zeros([block.ncha, block.nt, block.nx], group[0].data.dtype)
-        for acq, it in zip(group, indt):
-            water_init[:, it, :] = acq.data
-        do_init(block, water_init)
+#    if group[0].idx.contrast == 1:
+#        water_init = np.zeros([block.ncha, block.nt, block.nx], group[0].data.dtype)
+#        for acq, it in zip(group, indt):
+#            water_init[:, it, :] = acq.data
+#        do_init(block, water_init)
     # else:
     #    don't care about METAB center of kspace
 
@@ -496,7 +497,7 @@ def process_group_epsi(block, group):
     for acq, it in zip(group, indt):
         block.tmp[:, it, :] = acq.data
 
-    data_out = do_epsi(block, indxy, indxz, ieco)
+#    data_out = do_epsi(block, indxy, indxz, ieco)
 
     # save to shared_mem space here for each channel
 

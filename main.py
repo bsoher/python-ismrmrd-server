@@ -12,7 +12,8 @@ defaults = {
     'host':           '0.0.0.0',
     'port':           9002,
     'defaultConfig':  'invertcontrast',
-    'savedataFolder': '/tmp/share/saved_data'
+    'savedataFolder': '/tmp/share/saved_data',
+    'logfile':        '/tmp/share/debug/bjs_python-ismrmrd-server.log'
 }
 
 def main(args):
