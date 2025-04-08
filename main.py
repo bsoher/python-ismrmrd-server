@@ -30,7 +30,7 @@ def main(args):
     signal.signal(signal.SIGINT,  handle_signals)
 
     # Start server
-    server.serve()
+    server.serve() 
 
 if __name__ == '__main__':
 

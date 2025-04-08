@@ -248,6 +248,9 @@ def process(connection, config, metadata):
                                 images = send_raw(block, acq_group, connection, config, metadata)
                                 connection.send_image(images)
                                 block.last_zindx += 1
+                                if block.last_zindx == 2:
+                                    bob = 1/0
+                                    tmp = 10
                             acq_group = []
 
                 elif inline_method == 'epsi':
