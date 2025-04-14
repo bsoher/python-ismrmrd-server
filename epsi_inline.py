@@ -210,7 +210,7 @@ def process(connection, config, metadata):
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
 
-    inline_method = ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
+    inline_method = 'raw'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
 
     try:
         for item in connection:
@@ -248,9 +248,6 @@ def process(connection, config, metadata):
                                 images = send_raw(block, acq_group, connection, config, metadata)
                                 connection.send_image(images)
                                 block.last_zindx += 1
-                                if block.last_zindx == 2:
-                                    bob = 1/0
-                                    tmp = 10
                             acq_group = []
 
                 elif inline_method == 'epsi':
