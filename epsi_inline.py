@@ -205,7 +205,7 @@ def process(connection, config, metadata):
 
     # Continuously parse incoming data parsed from MRD messages
     acq_group = []
-    ctr_group = []
+    ref_group = []
 
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
@@ -214,19 +214,29 @@ def process(connection, config, metadata):
 
     try:
         for item in connection:
-            # ----------------------------------------------------------
+            # -------------------------------------------------------------------------------------
             # Raw k-space data messages
-            # ----------------------------------------------------------
+            # - user_int[3] is non-zero for all ADCs of final y-encode of a given z-slice
+            # - data collate for RAW complete given the following 3 things:
+            #   - idx.contrast == 1 (both metab and water data acquired)
+            #   - user_int[3] > 0 (this is last y-encode of a given z-slice)
+            #   - user_int[1] > 0 (this is last ADC of the EPI acquisition)
+            # - data collate for EPSI complete given the following 3 things:
+            #   - idx.contrast == 1 (both metab and water data acquired)
+            #   - user_int[3] > 0 (this is last y-encode of a given z-slice)
+            #   - user_int[1] > 0 (this is last ADC of the EPI acquisition)
+            # - data collate for EPSI complete when both user_int[1] AND user_int[3] are non-zero
+            # -------------------------------------------------------------------------------------
             if isinstance(item, ismrmrd.Acquisition):
 
-                flag_ctr_kspace = item.user_int[0] > 0
+                flag_ctr_kspace = item.user_int[2] > 0
                 flag_last_epi = item.user_int[1] > 0
-                flag_last_yencode = item.idx.kspace_encode_step_1 == block.ny - 1
+                flag_last_yencode = item.user_int[3] > 0    # bjs orig - item.idx.kspace_encode_step_1 == block.ny - 1
+                
                 zindx = item.idx.kspace_encode_step_2
                 yindx = item.idx.kspace_encode_step_1
 
                 if inline_method == 'raw':
-
                     if block.do_setup:
                         block.ncha, block.nx = item.data.shape
                         dims = [block.nz, block.ny, block.nt, block.nx]
@@ -253,28 +263,33 @@ def process(connection, config, metadata):
                 elif inline_method == 'epsi':
                     if block.do_setup:
                         block.ncha, block.nx = item.data.shape
-
                         block.nx2 = int(block.nx // 2)
                         block.nt2 = int(block.nt // 2)
 
-                        dims = [block.nz, block.ny, block.nx2, block.nt2]
+                        dims = [block.nz, block.ny, block.nt, block.nx]
                         block.water = []
                         block.metab = []
+                        dims_epsi = [block.nz, block.ny, block.nx2, block.nt2]
+                        block.water_epsi = []
+                        block.metab_epsi = []
                         for i in range(block.ncha):
                             block.water.append(np.zeros(dims, item.data.dtype))
                             block.metab.append(np.zeros(dims, item.data.dtype))
-                        block.tmp = np.zeros([block.ncha,block.nt,block.nx])
+                            block.water_epsi.append(np.zeros(dims_epsi, item.data.dtype))
+                            block.metab_epsi.append(np.zeros(dims_epsi, item.data.dtype))
                         block.do_setup = False
+                        block.ref_done = False
 
                     if flag_ctr_kspace:             # Center of kspace data
-                        ctr_group.append(item)
-                        if flag_last_epi:
-                            process_init_epsi(block, ctr_group, config, metadata)
-                            ctr_group = []
+                        ref_group.append(item)
+                        if item.idx.contrast == 1 and flag_last_epi:
+                            process_init_epsi(block, ref_group, config, metadata)
+                            ref_group = []
+                            block_ref_done = True
                     else:                           # Regular kspace acquisition
                         acq_group.append(item)
                         if flag_last_epi:
-                            process_group_epsi(block, acq_group, config, metadata)
+                            process_raw_to_epsi(block, acq_group, config, metadata)
                             if item.idx.contrast == 1 and flag_last_yencode:
                                 logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
                                 images = send_epsi(block, acq_group, connection, config, metadata)
@@ -306,12 +321,9 @@ def process_group_raw(block, group, config, metadata):
     indy = [item.idx.kspace_encode_step_1 for item in group]
     indt = list(range(block.nt))
 
-    indxz = list(set(indz))
-    indxy = list(set(indy))
-
-    if len(indxz) > 1:
+    if len(set(indz)) > 1:
         logger_bjs.info("Too many Z encodes in TR data group")
-    if len(indxy) > 1:
+    if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in TR data group")
 
     for acq, iz, iy, it in zip(group, indz, indy, indt):
@@ -323,12 +335,66 @@ def process_group_raw(block, group, config, metadata):
     return
 
 
+def process_init_epsi(block, group, config, metadata):
+    """ Format data into a [cha RO ave lin seg] array """
+
+    indz = [item.idx.kspace_encode_step_2 for item in group]
+    indy = [item.idx.kspace_encode_step_1 for item in group]
+    indt = list(range(block.nt))
+
+    if len(set(indz)) > 1:
+        logger_bjs.info("Too many Z encodes in Init data group")
+    if len(set(indy)) > 1:
+        logger_bjs.info("Too many Y encodes in Init data group")
+
+    for acq, iz, iy, it in zip(group, indz, indy, indt):
+        for i in range(block.ncha):
+            if group[0].idx.contrast == 0:
+                block.metab[i][iz, iy, it, :] = acq.data[i,:]
+            else:
+                block.water[i][iz, iy, it, :] = acq.data[i,:]
+
+    # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
+
+    do_init(block)
+    block.ref_done = True
+
+
+def process_raw_to_epsi(block, group):
+
+    indz = set([item.idx.kspace_encode_step_2 for item in group])
+    indy = set([item.idx.kspace_encode_step_1 for item in group])
+    indt = list(range(block.nt))
+    ieco = group[0].idx.contrast
+
+    if len(indz) > 1:
+        logger_bjs.info("Too many Z encodes in TR data group")
+    if len(indy) > 1:
+        logger_bjs.info("Too many Y encodes in TR data group")
+
+    for acq, it in zip(group, indt):
+        for i in range(block.ncha):
+            if group[0].idx.contrast == 0:
+                block.metab[i][indz, indy, it, :] = acq.data[i,:]
+            else:
+                block.water[i][indz, indy, it, :] = acq.data[i,:]
+
+    data_out = do_epsi(block, indy, indz, ieco)
+
+    for i in range(block.ncha):
+        if ieco == 0:
+            block.metab_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
+        else:
+            block.water_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
+
+    return
+
+
 def send_raw(block, group, connection, config, metadata):
 
     zindx = block.last_zindx   # TODO bjs - what range do we take?
     images = []
 
-    metadata.measurementInformation.protocolName += '_RAW'
     metadata.encoding[0].echoTrainLength = 2
 
     slthick = float(block.fovz/block.nz)
@@ -354,7 +420,7 @@ def send_raw(block, group, connection, config, metadata):
     tmpMetaMet['InternalSend'] = 1      # skips SpecSend functor in ICE program - might keep header from modification?
 
     tmpMetaMet['SiemensDicom_EchoTrainLength'] = 2
-    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_RAW'
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW'
     tmpMetaMet['SiemensDicom_PercentPhaseFoV'] = 1.0
     tmpMetaMet['SiemensDicom_PercentSampling'] = 1.0
     tmpMetaMet['SiemensDicom_NoOfCols'] = int(block.nx)
@@ -362,7 +428,7 @@ def send_raw(block, group, connection, config, metadata):
     tmpMetaMet['SiemensDicom_ProtocolSliceNumber'] = zindx
     tmpMetaMet['SiemensDicom_TE'] = metadata.sequenceParameters.TE[0]
     tmpMetaMet['SiemensDicom_TR'] = metadata.sequenceParameters.TR[0]
-    #tmpMetaMet['SiemensDicom_PixelSpacing'] = (ctypes.c_float(block.fovx/block.nx),ctypes.c_float(block.fovy/block.ny))
+    tmpMetaMet['SiemensDicom_TI'] = metadata.sequenceParameters.TI[0]
     tmpMetaMet['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
 
     tmpMetaWat = ismrmrd.Meta()
@@ -373,7 +439,7 @@ def send_raw(block, group, connection, config, metadata):
     tmpMetaWat['InternalSend'] = 1
 
     tmpMetaWat['SiemensDicom_EchoTrainLength'] = 2
-    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_RAW'
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_RAW'
     tmpMetaWat['SiemensDicom_PercentPhaseFoV'] = 1.0
     tmpMetaWat['SiemensDicom_PercentSampling'] = 1.0
     tmpMetaWat['SiemensDicom_NoOfCols'] = int(block.nx)
@@ -381,7 +447,7 @@ def send_raw(block, group, connection, config, metadata):
     tmpMetaWat['SiemensDicom_ProtocolSliceNumber'] = zindx
     tmpMetaWat['SiemensDicom_TE'] = metadata.sequenceParameters.TE[1]
     tmpMetaWat['SiemensDicom_TR'] = metadata.sequenceParameters.TR[1]
-    #tmpMetaWat['SiemensDicom_PixelSpacing'] = (ctypes.c_float(block.fovx/block.nx),ctypes.c_float(block.fovy/block.ny))
+    tmpMetaWat['SiemensDicom_TI'] = metadata.sequenceParameters.TI[0]
     tmpMetaWat['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
 
 
@@ -458,59 +524,6 @@ def send_raw(block, group, connection, config, metadata):
     return images
 
 
-def process_init_epsi(block, group, config, metadata):
-    """ Format data into a [cha RO ave lin seg] array """
-
-    indz = [item.idx.kspace_encode_step_2 for item in group]
-    indy = [item.idx.kspace_encode_step_1 for item in group]
-    indt = list(range(block.nt))
-
-    if len(set(indz)) > 1:
-        logger_bjs.info("Too many Z encodes in Init data group")
-    if len(set(indy)) > 1:
-        logger_bjs.info("Too many Y encodes in Init data group")
-
-#    if group[0].idx.contrast == 1:
-#        water_init = np.zeros([block.ncha, block.nt, block.nx], group[0].data.dtype)
-#        for acq, it in zip(group, indt):
-#            water_init[:, it, :] = acq.data
-#        do_init(block, water_init)
-    # else:
-    #    don't care about METAB center of kspace
-
-
-def process_group_epsi(block, group):
-
-    indz = [item.idx.kspace_encode_step_2 for item in group]
-    indy = [item.idx.kspace_encode_step_1 for item in group]
-    indt = list(range(block.nt))
-
-    indxz = list(set(indz))
-    indxy = list(set(indy))
-    ieco = group[0].idx.contrast
-
-    if len(indxz) > 1:
-        logger_bjs.info("Too many Z encodes in TR data group")
-    if len(indxy) > 1:
-        logger_bjs.info("Too many Y encodes in TR data group")
-
-    for acq, it in zip(group, indt):
-        block.tmp[:, it, :] = acq.data
-
-#    data_out = do_epsi(block, indxy, indxz, ieco)
-
-    # save to shared_mem space here for each channel
-
-    # TODO bjs - need a new for loop here for final z, y , x2, nt2 dims
-    for i in range(block.ncha):
-        if group[0].idx.contrast == 0:
-            block.metab[i][indxz, indxy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
-        else:
-            block.water[i][indxz, indxy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
-
-    return
-
-
 def send_epsi(block, group, connection, config, metadata):
 
     # NOT DONE -- NOT DONE -- NOT DONE -- NOT DONE -- NOT DONE -- NOT DONE --
@@ -550,6 +563,8 @@ def send_epsi(block, group, connection, config, metadata):
     tmpMeta['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON']
     tmpMeta['Keep_image_geometry'] = 1
     tmpMeta['SiemensControl_SpectroData'] = ['bool', 'true']
+
+    tmpMeta['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_PROC1'    # for epsi processing ?
 
     # Change dwell time to account for removal of readout oversampling
     dwellTime = mrdhelper.get_userParameterDouble_value(metadata, 'DwellTime_0')  # in ms
