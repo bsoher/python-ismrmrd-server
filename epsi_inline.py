@@ -356,7 +356,7 @@ def process_init_epsi(block, group, config, metadata):
 
     # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
 
-    do_init(block)
+#    do_init(block)
     block.ref_done = True
 
 
@@ -379,13 +379,13 @@ def process_raw_to_epsi(block, group):
             else:
                 block.water[i][indz, indy, it, :] = acq.data[i,:]
 
-    data_out = do_epsi(block, indy, indz, ieco)
+#    data_out = do_epsi(block, indy, indz, ieco)
 
-    for i in range(block.ncha):
-        if ieco == 0:
-            block.metab_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
-        else:
-            block.water_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
+    # for i in range(block.ncha):
+    #     if ieco == 0:
+    #         block.metab_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
+    #     else:
+    #         block.water_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
 
     return
 
