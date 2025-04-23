@@ -123,7 +123,6 @@ class Server:
                 spectroscopy_bjs.process(connection, configAdditional, metadata)
             elif (config == "epsi_inline"):
                 logging.info("Starting epsi processing based on config")
-                raise ValueError("--- bjs: Do not enter epsi_inline()")
                 epsi_inline.process(connection, configAdditional, metadata)
             elif (config == "analyzeflow"):
                 logging.info("Starting analyzeflow processing based on config")

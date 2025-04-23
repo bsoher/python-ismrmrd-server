@@ -394,8 +394,8 @@ def process_raw_to_epsi(block, group):
             else:
                 block.water[i][indz, indy, it, :] = acq.data[i,:]
 
-    data_out = do_epsi_process(block, indy, indz, ieco)
-
+    # data_out = do_epsi_process(block, indy, indz, ieco)
+    #
     # for i in range(block.ncha):
     #     if ieco == 0:
     #         block.metab_epsi[i][indz, indy, :, :] = data_out[i, :, :]  # dims should be cha,x,t here
