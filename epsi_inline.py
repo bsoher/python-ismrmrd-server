@@ -356,9 +356,24 @@ def process_init_epsi(block, group, config, metadata):
 
     # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
 
-#    do_init(block)
+    nt, nx, ny, nz, nchan = block.nt, block.nx, block.ny, block.nz, block.n_channels
+    dims = (nz, ny, nt, nx)
+
+    k_data = inline_init_traj_corr(block)       # TODO bjs - do I need to save k_data
+
+    # Preparation section
+
+    for ichan in range(nchan):
+        xino, xine = init_interp_kx(block, k_data, ichan)
+        expo, expe = init_process_kt(block, ichan, reverse=False)
+        block.xino[ichan][:,:] = xino
+        block.xine[ichan][:,:] = xine
+        block.expo[ichan][:,:] = expo
+        block.expe[ichan][:,:] = expe
+
     block.ref_done = True
 
+        
 
 def process_raw_to_epsi(block, group):
 
@@ -379,7 +394,7 @@ def process_raw_to_epsi(block, group):
             else:
                 block.water[i][indz, indy, it, :] = acq.data[i,:]
 
-#    data_out = do_epsi(block, indy, indz, ieco)
+    data_out = do_epsi_process(block, indy, indz, ieco)
 
     # for i in range(block.ncha):
     #     if ieco == 0:
