@@ -210,7 +210,7 @@ def process(connection, config, metadata):
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
 
-    inline_method = 'raw'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
+    inline_method = 'epsi'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
 
     try:
         for item in connection:
@@ -375,11 +375,12 @@ def process_init_epsi(block, group, config, metadata):
 
         
 
-def process_raw_to_epsi(block, group):
+def process_raw_to_epsi(block, group, config, metadata):
 
     indz = set([item.idx.kspace_encode_step_2 for item in group])
     indy = set([item.idx.kspace_encode_step_1 for item in group])
-    indt = list(range(block.nt))
+    indt = set([item.idx.segment for item in group])
+    #indt = list(range(block.nt))
     ieco = group[0].idx.contrast
 
     if len(indz) > 1:
