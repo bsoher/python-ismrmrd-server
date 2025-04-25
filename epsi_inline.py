@@ -266,13 +266,15 @@ def process(connection, config, metadata):
                         block.nx2 = int(block.nx // 2)
                         block.nt2 = int(block.nt // 2)
 
-                        dims = [block.nz, block.ny, block.nt, block.nx]
+                        dims = [block.nt, block.nx]
+                        dims_epsi = [block.ny, block.nx2, block.nt2]
+                        block.ref = []
                         block.water = []
                         block.metab = []
-                        dims_epsi = [block.nz, block.ny, block.nx2, block.nt2]
                         block.water_epsi = []
                         block.metab_epsi = []
                         for i in range(block.ncha):
+                            block.ref.append(np.zeros(dims, item.data.dtype))
                             block.water.append(np.zeros(dims, item.data.dtype))
                             block.metab.append(np.zeros(dims, item.data.dtype))
                             block.water_epsi.append(np.zeros(dims_epsi, item.data.dtype))
@@ -347,7 +349,7 @@ def process_init_epsi(block, group, config, metadata):
     if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in Init data group")
 
-    for acq, iz, iy, it in zip(group, indz, indy, indt):
+    for acq, iz, iy, it in zip(group, indt):
         for i in range(block.ncha):
             if group[0].idx.contrast == 0:
                 block.metab[i][iz, iy, it, :] = acq.data[i,:]
