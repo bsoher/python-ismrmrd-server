@@ -122,14 +122,18 @@ class BlockEpsi:
         self.echo_shifts        = None
         self.echo_phases        = None
         self.Is_GE              = False
-        self.last_zindx        = 0
+        self.last_zindx         = 0
+        
+        self.curr_yindx = 0
+        self.curr_zindx = 0
 
         # data storage
 
-        self.metab_init = None
-        self.water_init = None
-        self.water = []
-        self.metab = []
+        self.ref = None
+        self.water = None
+        self.metab = None
+        self.water_epsi = None
+        self.metab_epsi = None
 
     @property
     def n_channels(self):
@@ -266,21 +270,18 @@ def process(connection, config, metadata):
                         block.nx2 = int(block.nx // 2)
                         block.nt2 = int(block.nt // 2)
 
-                        dims = [block.nt, block.nx]
-                        dims_epsi = [block.ny, block.nx2, block.nt2]
-                        block.ref = []
-                        block.water = []
-                        block.metab = []
-                        block.water_epsi = []
-                        block.metab_epsi = []
-                        for i in range(block.ncha):
-                            block.ref.append(np.zeros(dims, item.data.dtype))
-                            block.water.append(np.zeros(dims, item.data.dtype))
-                            block.metab.append(np.zeros(dims, item.data.dtype))
-                            block.water_epsi.append(np.zeros(dims_epsi, item.data.dtype))
-                            block.metab_epsi.append(np.zeros(dims_epsi, item.data.dtype))
+                        dims = [block.ncha, block.nt, block.nx]
+                        dims_epsi = [block.ncha, block.nx2, block.nt2]
+                        block.ref = np.zeros(dims, item.data.dtype)
+                        block.water = np.zeros(dims, item.data.dtype)
+                        block.metab = np.zeros(dims, item.data.dtype)
+                        block.water_epsi = np.zeros(dims_epsi, item.data.dtype)
+                        block.metab_epsi = np.zeros(dims_epsi, item.data.dtype)
                         block.do_setup = False
                         block.ref_done = False
+
+                    block.curr_yindx = yindx
+                    block.curr_zindx = zindx
 
                     if flag_ctr_kspace:             # Center of kspace data
                         ref_group.append(item)
@@ -342,36 +343,32 @@ def process_init_epsi(block, group, config, metadata):
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
     indy = [item.idx.kspace_encode_step_1 for item in group]
-    indt = list(range(block.nt))
+    indt = [item.idx.segment for item in group]
+    #indt = list(range(block.nt))
 
     if len(set(indz)) > 1:
         logger_bjs.info("Too many Z encodes in Init data group")
     if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in Init data group")
+    if len(set(indt)) != block.nt:
+        logger_bjs.info("Length of segment encodes list not equal to Nt in Init data group")
 
-    for acq, iz, iy, it in zip(group, indt):
-        for i in range(block.ncha):
-            if group[0].idx.contrast == 0:
-                block.metab[i][iz, iy, it, :] = acq.data[i,:]
-            else:
-                block.water[i][iz, iy, it, :] = acq.data[i,:]
+    for item in group:
+        if item.idx.contrast == 1:
+            for i in range(block.ncha):
+                block.ref[icha, item.idx.segment, :] = item.data[i,:]
 
     # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
 
-    nt, nx, ny, nz, nchan = block.nt, block.nx, block.ny, block.nz, block.n_channels
-    dims = (nz, ny, nt, nx)
+    block.k_traj = inline_init_traj_corr(block)       # TODO bjs - do I need to save k_data
 
-    k_data = inline_init_traj_corr(block)       # TODO bjs - do I need to save k_data
+    xino, xine = inline_init_interp_kx(block, block.k_traj)
+    expo, expe = inline_init_process_kt(block, reverse=False)
 
-    # Preparation section
-
-    for ichan in range(nchan):
-        xino, xine = init_interp_kx(block, k_data, ichan)
-        expo, expe = init_process_kt(block, ichan, reverse=False)
-        block.xino[ichan][:,:] = xino
-        block.xine[ichan][:,:] = xine
-        block.expo[ichan][:,:] = expo
-        block.expe[ichan][:,:] = expe
+    block.xino = xino
+    block.xine = xine
+    block.expo = expo
+    block.expe = expe
 
     block.ref_done = True
 
@@ -390,14 +387,17 @@ def process_raw_to_epsi(block, group, config, metadata):
     if len(indy) > 1:
         logger_bjs.info("Too many Y encodes in TR data group")
 
-    for acq, it in zip(group, indt):
+    for item in group:
         for i in range(block.ncha):
-            if group[0].idx.contrast == 0:
-                block.metab[i][indz, indy, it, :] = acq.data[i,:]
+            if item.idx.contrast == 0:
+                block.metab[icha, item.idx.segment, :] = acq.data[i,:]
             else:
-                block.water[i][indz, indy, it, :] = acq.data[i,:]
+                block.water[icha, item.idx.segment, :] = acq.data[i,:]
 
-    # data_out = do_epsi_process(block, indy, indz, ieco)
+    metab_out = inline_do_epsi(block, block.metab)
+    water_out = inline_do_epsi(block, block.water)
+    
+    
     #
     # for i in range(block.ncha):
     #     if ieco == 0:
@@ -686,48 +686,48 @@ def dump_active_flags(item, prnt=False):
     lines = []
 
     if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_ENCODE_STEP1): lines.append("ACQ_IS_DUMMYSCAN_DATA                  = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_ENCODE_STEP1):	lines.append("ACQ_LAST_IN_ENCODE_STEP1               = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_ENCODE_STEP2):	lines.append("ACQ_FIRST_IN_ENCODE_STEP2              = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_ENCODE_STEP2):	lines.append("ACQ_LAST_IN_ENCODE_STEP2               = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_AVERAGE):		lines.append("ACQ_FIRST_IN_AVERAGE                   = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_AVERAGE):		lines.append("ACQ_LAST_IN_AVERAGE                    = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_SLICE):		lines.append("ACQ_FIRST_IN_SLICE                     = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE):		    lines.append("ACQ_LAST_IN_SLICE                      = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_CONTRAST):		lines.append("ACQ_FIRST_IN_CONTRAST                  = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_CONTRAST):		lines.append("ACQ_LAST_IN_CONTRAST                   = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_PHASE):		lines.append("ACQ_FIRST_IN_PHASE                     = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_PHASE):		    lines.append("ACQ_LAST_IN_PHASE                      = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_REPETITION):	lines.append("ACQ_FIRST_IN_REPETITION                = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_REPETITION):	lines.append("ACQ_LAST_IN_REPETITION                 = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_SET):		    lines.append("ACQ_FIRST_IN_SET                       = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SET):			lines.append("ACQ_LAST_IN_SET                        = True")
-    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_SEGMENT):		lines.append("ACQ_FIRST_IN_SEGMENT                   = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SEGMENT):		lines.append("ACQ_LAST_IN_SEGMENT                    = True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_NOISE_MEASUREMENT):	lines.append("ACQ_IS_NOISE_MEASUREMENT               = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_ENCODE_STEP1):  lines.append("ACQ_LAST_IN_ENCODE_STEP1               = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_ENCODE_STEP2): lines.append("ACQ_FIRST_IN_ENCODE_STEP2              = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_ENCODE_STEP2):  lines.append("ACQ_LAST_IN_ENCODE_STEP2               = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_AVERAGE):      lines.append("ACQ_FIRST_IN_AVERAGE                   = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_AVERAGE):       lines.append("ACQ_LAST_IN_AVERAGE                    = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_SLICE):        lines.append("ACQ_FIRST_IN_SLICE                     = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE):         lines.append("ACQ_LAST_IN_SLICE                      = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_CONTRAST):     lines.append("ACQ_FIRST_IN_CONTRAST                  = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_CONTRAST):      lines.append("ACQ_LAST_IN_CONTRAST                   = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_PHASE):        lines.append("ACQ_FIRST_IN_PHASE                     = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_PHASE):         lines.append("ACQ_LAST_IN_PHASE                      = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_REPETITION):   lines.append("ACQ_FIRST_IN_REPETITION                = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_REPETITION):    lines.append("ACQ_LAST_IN_REPETITION                 = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_SET):          lines.append("ACQ_FIRST_IN_SET                       = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SET):           lines.append("ACQ_LAST_IN_SET                        = True")
+    if item.is_flag_set(ismrmrd.ACQ_FIRST_IN_SEGMENT):      lines.append("ACQ_FIRST_IN_SEGMENT                   = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SEGMENT):       lines.append("ACQ_LAST_IN_SEGMENT                    = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_NOISE_MEASUREMENT):  lines.append("ACQ_IS_NOISE_MEASUREMENT               = True")
     if item.is_flag_set(ismrmrd.ACQ_IS_PARALLEL_CALIBRATION): lines.append("ACQ_IS_PARALLEL_CALIBRATION          = True")
     if item.is_flag_set(ismrmrd.ACQ_IS_PARALLEL_CALIBRATION_AND_IMAGING): lines.append("ACQ_IS_PARALLEL_CALIBRATION_AND_IMAGING= True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_REVERSE):			lines.append("ACQ_IS_REVERSE                         = True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_NAVIGATION_DATA):	lines.append("ACQ_IS_NAVIGATION_DATA                 = True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA):		lines.append("ACQ_IS_PHASECORR_DATA                  = True")
-    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_MEASUREMENT):	lines.append("ACQ_LAST_IN_MEASUREMENT                = True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_HPFEEDBACK_DATA):	lines.append("ACQ_IS_HPFEEDBACK_DATA                 = True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_DUMMYSCAN_DATA):		lines.append("ACQ_IS_DUMMYSCAN_DATA                  = True")
-    if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):	lines.append("ACQ_IS_RTFEEDBACK_DATA                 = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_REVERSE):            lines.append("ACQ_IS_REVERSE                         = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_NAVIGATION_DATA):    lines.append("ACQ_IS_NAVIGATION_DATA                 = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA):     lines.append("ACQ_IS_PHASECORR_DATA                  = True")
+    if item.is_flag_set(ismrmrd.ACQ_LAST_IN_MEASUREMENT):   lines.append("ACQ_LAST_IN_MEASUREMENT                = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_HPFEEDBACK_DATA):    lines.append("ACQ_IS_HPFEEDBACK_DATA                 = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_DUMMYSCAN_DATA):     lines.append("ACQ_IS_DUMMYSCAN_DATA                  = True")
+    if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):    lines.append("ACQ_IS_RTFEEDBACK_DATA                 = True")
     if item.is_flag_set(ismrmrd.ACQ_IS_SURFACECOILCORRECTIONSCAN_DATA): lines.append("ACQ_IS_SURFACECOILCORRECTIONSCAN_DATA = True")
     if item.is_flag_set(ismrmrd.ACQ_IS_PHASE_STABILIZATION_REFERENCE):lines.append("ACQ_IS_PHASE_STABILIZATION_REFERENCE   = True")
     if item.is_flag_set(ismrmrd.ACQ_IS_PHASE_STABILIZATION):lines.append("ACQ_IS_PHASE_STABILIZATION             = True")
-    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION1):		    lines.append("ACQ_COMPRESSION1                       = True")
-    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION2):		    lines.append("ACQ_COMPRESSION2                       = True")
-    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION3):		    lines.append("ACQ_COMPRESSION3                       = True")
-    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION4):		    lines.append("ACQ_COMPRESSION4                       = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER1):			        lines.append("ACQ_USER1                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER2):			        lines.append("ACQ_USER2                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER3):		    	    lines.append("ACQ_USER3                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER4):		    	    lines.append("ACQ_USER4                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER5):		    	    lines.append("ACQ_USER5                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER6):		    	    lines.append("ACQ_USER6                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER7):			        lines.append("ACQ_USER7                              = True")
-    if item.is_flag_set(ismrmrd.ACQ_USER8):			        lines.append("ACQ_USER8                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION1):          lines.append("ACQ_COMPRESSION1                       = True")
+    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION2):          lines.append("ACQ_COMPRESSION2                       = True")
+    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION3):          lines.append("ACQ_COMPRESSION3                       = True")
+    if item.is_flag_set(ismrmrd.ACQ_COMPRESSION4):          lines.append("ACQ_COMPRESSION4                       = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER1):                 lines.append("ACQ_USER1                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER2):                 lines.append("ACQ_USER2                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER3):                 lines.append("ACQ_USER3                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER4):                 lines.append("ACQ_USER4                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER5):                 lines.append("ACQ_USER5                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER6):                 lines.append("ACQ_USER6                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER7):                 lines.append("ACQ_USER7                              = True")
+    if item.is_flag_set(ismrmrd.ACQ_USER8):                 lines.append("ACQ_USER8                              = True")
 
     if lines == []:
         lines = 'No active flags.'
