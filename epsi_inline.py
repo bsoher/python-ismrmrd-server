@@ -343,7 +343,13 @@ def process_init_epsi(block, group, config, metadata):
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
     indy = [item.idx.kspace_encode_step_1 for item in group]
+<<<<<<< .mine
     indt = [item.idx.segment for item in group]
+
+=======
+    indt = [item.idx.segment for item in group]
+    #indt = list(range(block.nt))
+>>>>>>> .theirs
 
     if len(set(indz)) > 1:
         logger_bjs.info("Too many Z encodes in Init data group")
@@ -361,8 +367,13 @@ def process_init_epsi(block, group, config, metadata):
 
     block.k_traj = inline_init_traj_corr(block)       # TODO bjs - do I need to save k_data
 
+<<<<<<< .mine
     xino, xine = inline_init_interp_kx(block)
     expo, expe = inline_init_process_kt(block, reverse=False)
+=======
+    xino, xine = inline_init_interp_kx(block, block.k_traj)
+    expo, expe = inline_init_process_kt(block, reverse=False)
+>>>>>>> .theirs
 
     block.xino = xino
     block.xine = xine
