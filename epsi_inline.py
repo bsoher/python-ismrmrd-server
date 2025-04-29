@@ -15,6 +15,8 @@ import constants
 from time import perf_counter
 import matplotlib.pyplot as plt
 
+from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inline_init_process_kt, inline_do_epsi
+
 # bjs imports
 from logging import FileHandler, Formatter
 #from pymidas_inline.epsi.do_epsi import do_init, do_epsi
@@ -262,7 +264,11 @@ def process(connection, config, metadata):
                                 images = send_raw(block, acq_group, connection, config, metadata)
                                 connection.send_image(images)
                                 block.last_zindx += 1
+                                for i in range(block.ncha):
+                                    block.water[i] = block.water[i] * 0.0
+                                    block.metab[i] = block.metab[i] * 0.0
                             acq_group = []
+
 
                 elif inline_method == 'epsi':
                     if block.do_setup:
@@ -292,12 +298,17 @@ def process(connection, config, metadata):
                     else:                           # Regular kspace acquisition
                         acq_group.append(item)
                         if flag_last_epi:
-                            process_raw_to_epsi(block, acq_group, config, metadata)
+                            process_raw_to_epsi(block, acq_group)
                             if item.idx.contrast == 1 and flag_last_yencode:
                                 logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
-                                images = send_epsi(block, acq_group, connection, config, metadata)
-                                connection.send_image(images)
+                                # images = send_epsi(block, acq_group, connection, config, metadata)
+                                # connection.send_image(images)
                                 block.last_zindx += 1
+                                for i in range(block.ncha):
+                                    block.water[i] = block.water[i] * 0.0
+                                    block.metab[i] = block.metab[i] * 0.0
+                                    block.water_epsi[i] = block.water_epsi[i] * 0.0
+                                    block.metab_epsi[i] = block.metab_epsi[i] * 0.0
                             acq_group = []
                 else:
                     msg = "Inlne process method not recognized: %s", inline_method
@@ -329,12 +340,12 @@ def process_group_raw(block, group, config, metadata):
     if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in TR data group")
 
-    for acq, iz, iy, it in zip(group, indz, indy, indt):
+    for item, iz, iy, it in zip(group, indz, indy, indt):
         for i in range(block.ncha):
             if group[0].idx.contrast == 0:
-                block.metab[i][iz, iy, it, :] = acq.data[i,:]
+                block.metab[i][iz, iy, it, :] = item.data[i,:]
             else:
-                block.water[i][iz, iy, it, :] = acq.data[i,:]
+                block.water[i][iz, iy, it, :] = item.data[i,:]
     return
 
 
@@ -343,13 +354,7 @@ def process_init_epsi(block, group, config, metadata):
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
     indy = [item.idx.kspace_encode_step_1 for item in group]
-<<<<<<< .mine
     indt = [item.idx.segment for item in group]
-
-=======
-    indt = [item.idx.segment for item in group]
-    #indt = list(range(block.nt))
->>>>>>> .theirs
 
     if len(set(indz)) > 1:
         logger_bjs.info("Too many Z encodes in Init data group")
@@ -360,20 +365,15 @@ def process_init_epsi(block, group, config, metadata):
 
     for item in group:
         if item.idx.contrast == 1:
-            for i in range(block.ncha):
-                block.ref[icha, item.idx.segment, :] = item.data[i,:]
+            for icha in range(block.ncha):
+                block.ref[icha, item.idx.segment, :] = item.data[icha,:]
 
     # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
 
     block.k_traj = inline_init_traj_corr(block)       # TODO bjs - do I need to save k_data
 
-<<<<<<< .mine
     xino, xine = inline_init_interp_kx(block)
     expo, expe = inline_init_process_kt(block, reverse=False)
-=======
-    xino, xine = inline_init_interp_kx(block, block.k_traj)
-    expo, expe = inline_init_process_kt(block, reverse=False)
->>>>>>> .theirs
 
     block.xino = xino
     block.xine = xine
@@ -386,24 +386,24 @@ def process_init_epsi(block, group, config, metadata):
 def process_raw_to_epsi(block, group):
     ''' group is one EPI readout of water OR metab '''
 
-    indz = set([item.idx.kspace_encode_step_2 for item in group])
-    indy = set([item.idx.kspace_encode_step_1 for item in group])
-    indt = set([item.idx.segment for item in group])
+    indz = [item.idx.kspace_encode_step_2 for item in group]
+    indy = [item.idx.kspace_encode_step_1 for item in group]
+    indt = [item.idx.segment for item in group]
     ieco = group[0].idx.contrast
 
-    if len(indz) > 1:
+    if len(set(indz)) > 1:
         logger_bjs.info("Too many Z encodes in TR data group")
-    if len(indy) > 1:
+    if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in TR data group")
     if len(set(indt)) != block.nt:
         logger_bjs.info("Length of segment encodes list not equal to Nt in Init data group")
 
     for item in group:
-        for i in range(block.ncha):
+        for icha in range(block.ncha):
             if item.idx.contrast == 0:
-                block.metab[icha, item.idx.segment, :] = acq.data[i,:]
+                block.metab[icha, item.idx.segment, :] = item.data[icha,:]
             else:
-                block.water[icha, item.idx.segment, :] = acq.data[i,:]
+                block.water[icha, item.idx.segment, :] = item.data[icha,:]
 
     if ieco == 0:
         dat_out = inline_do_epsi(block, block.metab)
