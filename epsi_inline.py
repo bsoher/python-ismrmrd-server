@@ -89,7 +89,7 @@ class BlockEpsi:
         self.sw                 = 2500.0
         self.nx_out             = 50
         self.full_traj          = False          # deprecated?
-        self.sampling_interval  = 4000
+        self.sampling_interval  = 4e-6
 
         # dynamically set
         self.do_setup           = True      # setup arrays first off
@@ -366,7 +366,9 @@ def process_init_epsi(block, group, config, metadata):
     for item in group:
         if item.idx.contrast == 1:
             for icha in range(block.ncha):
-                block.ref[icha, item.idx.segment, :] = item.data[icha,:]
+                it = item.idx.segment % block.nt
+                block.ref[icha, it, :] = item.data[icha,:]
+                # TODO bjs - could use kz,ky,kx = 0 x nt FID as example of Metab data quality?
 
     # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
 

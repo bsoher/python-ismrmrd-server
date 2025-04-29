@@ -31,7 +31,7 @@ def inline_get_traj():
     """
     full_traj = False  # trajectory mode, 0 = one cycle, 1 = file covers whole multi-echo train
 
-    k_data = np.array([
+    k_traj = np.array([
         7.6293945e-06, 3.1311557e-02, 1.2515242e-01, 2.8131762e-01, 4.9945346e-01, 7.7906573e-01, 1.1195210e+00, 1.5200483e+00,
         1.9797397e+00, 2.4975543e+00, 3.0723190e+00, 3.7027318e+00, 4.3873649e+00, 5.1246667e+00, 5.9129672e+00, 6.7504807e+00,
         7.6353106e+00, 8.5654516e+00, 9.5387964e+00, 1.0553142e+01, 1.1606188e+01, 1.2695551e+01, 1.3818761e+01, 1.4973276e+01,
@@ -59,7 +59,7 @@ def inline_get_traj():
         1.9797370e+00, 1.5200455e+00, 1.1195184e+00, 7.7906317e-01, 4.9945089e-01, 2.8131506e-01, 1.2514986e-01, 3.1308994e-02],
         dtype=np.float32)
 
-    return k_data, full_traj
+    return k_traj
 
 
 def inline_idl_interpolate(xx, arr, cubic=-0.5, missing=None):
@@ -242,7 +242,7 @@ def inline_init_traj_corr(block):
 
     val = freq_shift / nchan
     freq_shift = 1.7 * val
-    block.set.frequency_drift_value = freq_shift
+    block.frequency_drift_value = freq_shift
 
     msg  = '\n    : inline Frequency drift at k-space center = ' + f'{val:.2f}' + ' Hz.'
     msg += '\n    : inline Total frequency drift estimate    = ' + f'{freq_shift:.2f}' + ' Hz.'
@@ -263,12 +263,13 @@ def inline_init_interp_kx(block):
     nx_out = int(block.nx / block.os)
 
     k_traj = block.k_traj
+    k_traj = k_traj.reshape(2, nx)
 
     samples = np.arange(nx + 1)
     samples2 = np.arange(nx_out) * os
 
-    low = int(np.ceil(k_traj[0, 0]) / block.os)
-    high = int(np.floor(k_traj[1, 0]) / block.os)
+    low = int(np.ceil(k_traj[0,0]) / block.os)
+    high = int(np.floor(k_traj[1,0]) / block.os)
     high = high if high < nx_out else nx_out
 
     samples2 = samples2[low: high]
@@ -341,25 +342,25 @@ def inline_init_process_kt(block, reverse=False):
     # odd/even time-shift correction depends on whether echo_output or
     # separate echos, 0 - add odd/even echos, 1 - output separate files
 
-    # bjs default - block.set.echo_output == 0
-    dt_o = -atr
-    dt_e = -atr_e - ts
+    # bjs default - block.echo_output == 0
+    dt0_o = -atr
+    dt0_e = -atr_e - ts
 
     # The sweepwidth here [rad/s] is that of all echos, i.e. before adding odd/even
     # Spectral coordinates in Hz, 0.0 in center
     ww = ((np.arange(nt3) / nt3) - 0.5) * sw
     ww = ww * np.pi
 
-    expo = np.zeros((nchan, nt3, nx_out), dtype=np.float32)  # odd
-    expe = np.zeros((nchan, nt3, nx_out), dtype=np.float32)  # even
+    expo = np.zeros((nchan, nt3, nx_out), dtype=np.complex128)  # odd
+    expe = np.zeros((nchan, nt3, nx_out), dtype=np.complex128)  # even
 
     for ichan in range(nchan):
 
-        # bjs default - block.set.echo_drift_corr > 0:
+        # bjs default - block.echo_drift_corr > 0:
         echoshift = block.echo_shifts[ichan, 0:2]           # in points, take 1st odd & even only
         echoshift = echoshift * block.sampling_interval     # convert to sec.
-        dt_o = dt_o - echoshift[0]
-        dt_e = dt_e - echoshift[1]
+        dt_o = dt0_o - echoshift[0]
+        dt_e = dt0_e - echoshift[1]
 
         #  Precompute exp term for ChemShift phase correction
         expo[ichan, :, :] = np.exp(1j * np.outer(ww, dt_o))
@@ -451,7 +452,7 @@ def inline_process_kt(block, data_in):
             tmpoo[0:nt2] = data_in[ichan, od, x].flatten()
             tmpee[0:nt2] = data_in[ichan, ev, x].flatten()
 
-            if block.set.echo_average_fix:
+            if block.echo_average_fix:
                 temp = (tmpoo[0:3] + tmpee[0:3]) * 0.5
 
             tmpoo[nt2::] = 0.0          # make 2^N with end of FID 0.0
@@ -470,7 +471,7 @@ def inline_process_kt(block, data_in):
 
             # Replace initial points with unprocessed odd+even-echo. This corrects
             # incorrect initial FID values due to frequency-dependent phase shift
-            if block.set.echo_average_fix:
+            if block.echo_average_fix:
                 tmpoo[0:3] = temp[0:3]
 
             data_out[ichan, x, :] = tmpoo[0:nt2]  # select just FID part, not zerofilled tail
@@ -485,7 +486,7 @@ def inline_apply_freq_drift(block, data):
 
     '''
     nt, nx, ny, nz = block.nt, block.nx, block.ny, block.nz
-    fd = block.set.frequency_drift_value
+    fd = block.frequency_drift_value
     sw = block.sw
     iy = block.curr_yindx
     iz = block.curr_zindx
