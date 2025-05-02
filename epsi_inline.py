@@ -89,7 +89,7 @@ class BlockEpsi:
         self.sw                 = 2500.0
         self.nx_out             = 50
         self.full_traj          = False          # deprecated?
-        self.sampling_interval  = 4e-6
+        self.sampling_interval  = 2e-6
 
         # dynamically set
         self.do_setup           = True      # setup arrays first off
@@ -216,7 +216,9 @@ def process(connection, config, metadata):
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
 
-    inline_method = 'epsi'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
+#    inline_method = 'epsi'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
+
+    inline_method = 'epsi' if block.ice_select in [0,2,4] else 'raw'
 
     try:
         for item in connection:
@@ -252,6 +254,7 @@ def process(connection, config, metadata):
                             block.water.append(np.zeros(dims, item.data.dtype))
                             block.metab.append(np.zeros(dims, item.data.dtype))
                         block.do_setup = False
+                        block.sampling_interval = item.sample_time_us * 1e-6
 
                     if flag_ctr_kspace:             # Center of kspace data ignored here
                         pass
@@ -261,7 +264,7 @@ def process(connection, config, metadata):
                             process_group_raw(block, acq_group, config, metadata)
                             if item.idx.contrast == 1 and flag_last_yencode:
                                 logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
-                                images = send_raw(block, acq_group, connection, config, metadata)
+                                images = send_raw(block, acq_group, metadata)
                                 connection.send_image(images)
                                 block.last_zindx += 1
                                 for i in range(block.ncha):
@@ -285,6 +288,7 @@ def process(connection, config, metadata):
                         block.metab_epsi = np.zeros(dims_epsi, item.data.dtype)
                         block.do_setup = False
                         block.ref_done = False
+                        block.sampling_interval = item.sample_time_us * 1e-6
 
                     block.curr_yindx = yindx
                     block.curr_zindx = zindx
@@ -300,9 +304,9 @@ def process(connection, config, metadata):
                         if flag_last_epi:
                             process_raw_to_epsi(block, acq_group)
                             if item.idx.contrast == 1 and flag_last_yencode:
-                                logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
-                                # images = send_epsi(block, acq_group, connection, config, metadata)
-                                # connection.send_image(images)
+                                logger_bjs.info("**** bjs - send_epsi() -- zindx = %d, yindx = %d " % (zindx, yindx))
+                                images = send_epsi(block, acq_group, metadata)
+                                connection.send_image(images)
                                 block.last_zindx += 1
                                 for i in range(block.ncha):
                                     block.water[i] = block.water[i] * 0.0
@@ -401,11 +405,12 @@ def process_raw_to_epsi(block, group):
         logger_bjs.info("Length of segment encodes list not equal to Nt in Init data group")
 
     for item in group:
+        it = item.idx.segment % block.nt
         for icha in range(block.ncha):
             if item.idx.contrast == 0:
-                block.metab[icha, item.idx.segment, :] = item.data[icha,:]
+                block.metab[icha, it, :] = item.data[icha,:]
             else:
-                block.water[icha, item.idx.segment, :] = item.data[icha,:]
+                block.water[icha, it, :] = item.data[icha,:]
 
     if ieco == 0:
         dat_out = inline_do_epsi(block, block.metab)
@@ -417,7 +422,7 @@ def process_raw_to_epsi(block, group):
     return
 
 
-def send_raw(block, group, connection, config, metadata):
+def send_raw(block, group, metadata):
 
     zindx = block.last_zindx   # TODO bjs - what range do we take?
     images = []
@@ -441,7 +446,7 @@ def send_raw(block, group, connection, config, metadata):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet = ismrmrd.Meta()
     tmpMetaMet['DataRole'] = 'Spectroscopy'
-    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON']
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS-RAW']
     tmpMetaMet['Keep_image_geometry'] = 1
     tmpMetaMet['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaMet['InternalSend'] = 1      # skips SpecSend functor in ICE program - might keep header from modification?
@@ -481,30 +486,6 @@ def send_raw(block, group, connection, config, metadata):
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
     logging.debug("Image MetaAttributes: %s", xml_metab)
-
-
-
-    # # NOT NEEDED FOR RAW SAVE, JUST FOR PROCESSED EPSI
-    # # Change dwell time to account for removal of readout oversampling
-    # dwellTime = mrdhelper.get_userParameterDouble_value(metadata, 'DwellTime_0')  # in ms
-    #
-    # if dwellTime is None:
-    #     logging.error("Could not find DwellTime_0 in MRD header")
-    # else:
-    #     logging.info("Found acquisition dwell time from header: " + str(dwellTime * 1000))
-    #     tmpMetaMet['SiemensDicom_RealDwellTime'] = ['int', str(int(dwellTime * 1000 * 2))]
-
-    # FROM BARTFIRE
-    # # Add image orientation directions to MetaAttributes if not already present
-    # if tmpMetaMet.get('ImageRowDir') is None:
-    #     tmpMetaMet['ImageRowDir'] = ["{:.18f}".format(tmpImg.getHead().read_dir[0]),
-    #                               "{:.18f}".format(tmpImg.getHead().read_dir[1]),
-    #                               "{:.18f}".format(tmpImg.getHead().read_dir[2])]
-    #
-    # if tmpMetaMet.get('ImageColumnDir') is None:
-    #     tmpMetaMet['ImageColumnDir'] = ["{:.18f}".format(tmpImg.getHead().phase_dir[0]),
-    #                                  "{:.18f}".format(tmpImg.getHead().phase_dir[1]),
-    #                                  "{:.18f}".format(tmpImg.getHead().phase_dir[2])]
 
 
     for icha in range(block.ncha):
@@ -551,59 +532,97 @@ def send_raw(block, group, connection, config, metadata):
     return images
 
 
-def send_epsi(block, group, connection, config, metadata):
+def send_epsi(block, group, metadata):
 
-    # NOT DONE -- NOT DONE -- NOT DONE -- NOT DONE -- NOT DONE -- NOT DONE --
+    zindx = block.last_zindx  # TODO bjs - what range do we take?
+    images = []
 
-    # May have to wait until all data processed to do these 2 steps, then
-    # send all data to database??? bjs  From do_epsi.do_epsi()
+    metadata.encoding[0].echoTrainLength = 2
 
-    nt, nx, ny, nz = block.nt, block.nx, block.ny, block.nz
+    slthick = float(block.fovz/block.nz)
+    posoff = slthick * (zindx - 0.5 * block.nz + .5)
+    norm_sag = mrdhelper.get_userParameterDouble_value(metadata, 'EpsiWip_sNormal_dSag')
+    norm_cor = mrdhelper.get_userParameterDouble_value(metadata, 'EpsiWip_sNormal_dCor')
+    norm_tra = mrdhelper.get_userParameterDouble_value(metadata, 'EpsiWip_sNormal_dTra')
+    pos_sag = mrdhelper.get_userParameterDouble_value(metadata, 'EpsiWip_sPosition_dSag')
+    pos_cor = mrdhelper.get_userParameterDouble_value(metadata, 'EpsiWip_sPosition_dCor')
+    pos_tra = mrdhelper.get_userParameterDouble_value(metadata, 'EpsiWip_sPosition_dTra')
+
+    posvecx = pos_sag + norm_sag * posoff
+    posvecy = pos_cor + norm_cor * posoff
+    posvecz = pos_tra + norm_tra * posoff
+
+    # Set ISMRMRD Meta Attributes
+    tmpMetaMet = ismrmrd.Meta()
+    tmpMetaMet['DataRole'] = 'Spectroscopy'
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS-EPSI']
+    tmpMetaMet['Keep_image_geometry'] = 1
+    tmpMetaMet['SiemensControl_SpectroData'] = ['bool', 'true']
+    tmpMetaMet['InternalSend'] = 1      # skips SpecSend functor in ICE program - might keep header from modification?
+
+    tmpMetaMet['SiemensDicom_EchoTrainLength'] = ['int', 2]
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI'
+    tmpMetaMet['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
+    tmpMetaMet['SiemensDicom_PercentSampling'] = ['double', 1.0]
+    tmpMetaMet['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
+    tmpMetaMet['SiemensDicom_SliceThickness'] = ['double', slthick]
+    tmpMetaMet['SiemensDicom_ProtocolSliceNumber'] = ['double', zindx]
+    tmpMetaMet['SiemensDicom_TE'] = ['double', metadata.sequenceParameters.TE[0]]
+    tmpMetaMet['SiemensDicom_TR'] = ['double', metadata.sequenceParameters.TR[0]]
+    tmpMetaMet['SiemensDicom_TI'] = ['double', metadata.sequenceParameters.TI[0]]
+    tmpMetaMet['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
+    tmpMetaMet['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
+
+
+    tmpMetaWat = ismrmrd.Meta()
+    tmpMetaWat['DataRole'] = 'Spectroscopy'
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS-EPSI']
+    tmpMetaWat['Keep_image_geometry'] = 1
+    tmpMetaWat['SiemensControl_SpectroData'] = ['bool', 'true']
+    tmpMetaWat['InternalSend'] = 1
+
+    tmpMetaWat['SiemensDicom_EchoTrainLength'] = ['int', 2]
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_EPSI'
+    tmpMetaWat['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
+    tmpMetaWat['SiemensDicom_PercentSampling'] = ['double', 1.0]
+    tmpMetaWat['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
+    tmpMetaWat['SiemensDicom_SliceThickness'] = ['double', slthick]
+    tmpMetaWat['SiemensDicom_ProtocolSliceNumber'] = ['double', zindx]
+    tmpMetaWat['SiemensDicom_TE'] = ['double', metadata.sequenceParameters.TE[1]]
+    tmpMetaWat['SiemensDicom_TR'] = ['double', metadata.sequenceParameters.TR[1]]
+    tmpMetaWat['SiemensDicom_TI'] = ['double', metadata.sequenceParameters.TI[0]]
+    tmpMetaWat['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
+    tmpMetaWat['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
+
+
+    xml_metab = tmpMetaMet.serialize()
+    xml_water = tmpMetaWat.serialize()
+    logging.debug("Image MetaAttributes: %s", xml_metab)
+
+    nt, nx, ny, nz, nchan = block.nt, block.nx, block.ny, block.nz, block.ncha
     nx2 = int(nx / 2)  # size of regridded data
     nt2 = int(nt / 2)
 
-    if block.set.swap_lr:
-        for ichan in range(block.ncha):
-            for z in range(nz):
-                for x in range(nx2):
-                    for t in range(nt2):
-                        tmp = np.fliplr(np.squeeze(block.water[ichan][z, :, x, t]))
-                        tmp[0] = 0 + 0j     # bjs - may not need this?
-                        block.water[ichan][z, :, x, t] = tmp
+    if block.swap_lr:
+        for ichan in range(nchan):
+            for x in range(nx2):
+                for t in range(nt2):
+                    tmp = np.fliplr(np.squeeze(block.water[ichan, :, x, t]))
+                    tmp[0] = 0 + 0j     # bjs - may not need this?
+                    block.water_epsi[ichan, :, x, t] = tmp
 
-                        tmp = np.fliplr(np.squeeze(block.metab[ichan][z, :, x, t]))
-                        tmp[0] = 0 + 0j     # bjs - may not need this?
-                        block.metab[ichan][z, :, x, t] = tmp
+                    tmp = np.fliplr(np.squeeze(block.metab[ichan, :, x, t]))
+                    tmp[0] = 0 + 0j     # bjs - may not need this?
+                    block.metab_epsi[ichan, :, x, t] = tmp
 
+    # TODO bjs - can't do that in FIRE, only one z-slice at a time
+    # - solution? - deal with this in FDFT?
+    #
+    # if block.invert_z:
+    #     for ichan in range(block.ncha):
+    #         block.water[ichan][:, :, :, :] = block.water[ichan][::-1, :, :, :]
+    #         block.metab[ichan][:, :, :, :] = block.metab[ichan][::-1, :, :, :]
 
-    if block.set.invert_z:
-        for ichan in range(block.ncha):
-            block.water[ichan][:, :, :, :] = block.water[ichan][::-1, :, :, :]
-            block.metab[ichan][:, :, :, :] = block.metab[ichan][::-1, :, :, :]
-
-    zindx = block.last_zindx        # TODO bjs - what range do we take?
-    images = []
-
-    # Set ISMRMRD Meta Attributes
-    tmpMeta = ismrmrd.Meta()
-    tmpMeta['DataRole'] = 'Spectroscopy'
-    tmpMeta['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON']
-    tmpMeta['Keep_image_geometry'] = 1
-    tmpMeta['SiemensControl_SpectroData'] = ['bool', 'true']
-
-    tmpMeta['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_PROC1'    # for epsi processing ?
-
-    # Change dwell time to account for removal of readout oversampling
-    dwellTime = mrdhelper.get_userParameterDouble_value(metadata, 'DwellTime_0')  # in ms
-
-    # if dwellTime is None:
-    #     logging.error("Could not find DwellTime_0 in MRD header")
-    # else:
-    #     logging.info("Found acquisition dwell time from header: " + str(dwellTime * 1000))
-    #     tmpMeta['SiemensDicom_RealDwellTime'] = ['int', str(int(dwellTime * 1000 * 2))]
-
-    xml = tmpMeta.serialize()
-    logging.debug("Image MetaAttributes: %s", xml)
 
     for icha in range(block.ncha):
         # Create new MRD instance for the processed image
@@ -611,8 +630,11 @@ def send_epsi(block, group, connection, config, metadata):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab[icha][zindx, :,:,:].copy()      # TODO bjs - what range do we take?
-        water = block.water[icha][zindx, :,:,:].copy()
+        metab = block.metab_epsi[:, icha, :, :].copy()
+        water = block.water_epsi[:, icha, :, :].copy()
+
+        metab = np.squeeze(metab)
+        water = np.squeeze(water)
 
         ms = metab.shape
         ws = water.shape
@@ -630,11 +652,15 @@ def send_epsi(block, group, connection, config, metadata):
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
         tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
 
-        tmpImgMet.image_index = 1
-        tmpImgWat.image_index = 1
+        tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
 
-        tmpImgMet.attribute_string = xml
-        tmpImgWat.attribute_string = xml
+        tmpImgMet.image_index = block.out_indx + 0
+        tmpImgWat.image_index = block.out_indx + 1
+        block.out_indx += 2
+
+        tmpImgMet.attribute_string = xml_metab
+        tmpImgWat.attribute_string = xml_water
 
         images.append(tmpImgMet)
         images.append(tmpImgWat)

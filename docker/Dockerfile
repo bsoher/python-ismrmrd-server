@@ -71,7 +71,7 @@ RUN pip3 install --trusted-host pypi.org --no-cache-dir matplotlib==3.8.2 pydico
 
 # bjs-start
 
-RUN pip3 install --trusted-host pypi.org --no-cache-dir numpy 
+RUN pip3 install --trusted-host pypi.org --no-cache-dir numpy scipy
 #RUN pip3 install --trusted-host pypi.org --no-cache-dir scipy configobj packaging
 #RUN pip3 install --trusted-host pypi.org --no-cache-dir lmfit pypubsub nibabel nifti-mrs
 

@@ -402,15 +402,15 @@ def inline_process_kx(block, data):
                 tmp_odd.append(tmp)
 
         odd_arr = np.array(tmp_odd).T
-        res_odd = inline_idl_interpolate(xino[ichan,:], odd_arr, cubic=-0.5, missing=0.0)
+        res_odd = inline_idl_interpolate(xino, odd_arr, cubic=-0.5, missing=0.0)
 
         evn_arr = np.array(tmp_odd).T
-        res_evn = inline_idl_interpolate(xine[ichan,:], evn_arr, cubic=-0.5, missing=0.0)
+        res_evn = inline_idl_interpolate(xine, evn_arr, cubic=-0.5, missing=0.0)
 
-        if xino[ichan,0] < 0:       # match IDL interpolate(missing=0) keyword option
+        if xino[0] < 0:       # match IDL interpolate(missing=0) keyword option
             res_odd[0,:] = 0+0j
 
-        if xine[ichan,0] < 0:
+        if xine[0] < 0:
             res_evn[0,:] = 0+0j
 
         data[ichan, :, nx_out:] *= 0.0
@@ -432,7 +432,7 @@ def inline_process_kt(block, data_in):
     nt2 = int(nt/2)
     pad_leng = block.csa_pad_length
 
-    data_out = np.ndarray([nchan, nx_out, nt2], dtype=np.complex64)
+    data_out = np.zeros([nchan, nx_out, nt2], dtype=np.complex64)
 
     od = np.arange(0, nt, 2, dtype=int)
     ev = np.arange(0, nt, 2, dtype=int) + 1
