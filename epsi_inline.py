@@ -216,9 +216,9 @@ def process(connection, config, metadata):
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
 
-#    inline_method = 'epsi'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
+    inline_method = 'raw'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
 
-    inline_method = 'epsi' if block.ice_select in [0,2,4] else 'raw'
+#    inline_method = 'epsi' if block.ice_select in [0,2,4] else 'raw'
 
     try:
         for item in connection:
