@@ -14,6 +14,7 @@
 * 3. [Code design](#Codedesign)
 * 4. [Saving incoming data](#Savingincomingdata)
 * 5. [Startup scripts](#Startupscripts)
+* 6. [Building a custom Docker image](#CustomDockers)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -261,6 +262,13 @@ Conda is a Python environment manager that is useful for creating and maintainin
     pip install ismrmrd
     ```
 
+1. The [ismrmrd-python-tools](https://github.com/ismrmrd/ismrmrd-python-tools) contain useful libraries for simulations, including generation of simulated raw k-space data used by [generate_cartesian_shepp_logan_dataset](./generate_cartesian_shepp_logan_dataset.py).  Install it by cloning the repository and using `pip install .` (note the trailing `.`) in the folder.
+    ```
+    git clone https://github.com/ismrmrd/ismrmrd-python-tools.git
+    cd ismrmrd-python-tools
+    pip3 install .
+    ```
+
 To use this environment in the future, open a command prompt and run ``micromamba activate mrd``.
 
 ###  2.3. <a name='SettingupaDockerenvironment'></a>Setting up a Docker environment
@@ -354,13 +362,16 @@ This code is designed to provide a reference implementation of an MRD client/ser
 - [mrd2gif.py](mrd2gif.py): This program converts an MRD image .h5 file into an animated GIF for quick previews.
 
 There are several example "modules" that can be selected by specifying their name via the config (`-c`) argument:
-- [invertcontrast.py](invertcontrast.py): This program accepts both incoming raw data as well as image data.  The image contrast is inverted and images are sent back to the client.
+- [invertcontrast.py](invertcontrast.py): This module accepts both incoming raw data as well as image data.  The image contrast is inverted and images are sent back to the client.
 
-- [simplefft.py](simplefft.py): This file contains code for performing a rudimentary image reconstruction from raw data, consisting of a Fourier transform, sum-of-squares coil combination, signal intensity normalization, and removal of phase oversampling.
+- [simplefft.py](simplefft.py): This module contains code for performing a rudimentary image reconstruction from raw data, consisting of a Fourier transform, sum-of-squares coil combination, signal intensity normalization, and removal of phase oversampling.
 
-- [rgb.py](rgb.py): This program accepts incoming image data, applies a jet colormap, and sends RGB images back to the client.
+- [analyzeflow.py](analyzeflow.py): This module accepts velocity phase contrast image data and performs basic masking.
 
-- [analyzeflow.py](analyzeflow.py): This program accepts velocity phase contrast image data and performs basic masking.
+- [report.py](report.py): This module provides an example of generating report from a dictionary of parameters (keys) and their corresponding values.  An image with a text table is returned to the client and values are stored in the MetaAttributes to allow for batch scripted parsing.
+
+### 3.1 <a name='Jsonconfig'></a>Additional (JSON) config
+It is often useful for a client to provide additional configuration parameters during runtime to a module without changing code in the module itself.  For example this could be used to tune filter parameters, toggle additional outputs, or control optional processing steps.  The [client.py](client.py) is configured to look for a config file in the current folder, matching the name of the module and ending in `.json`, e.g. `invertcontrast.json` if the config module is named `invertcontrast`.  The example [invertcontrast.json](invertcontrast.json) can be modified with the `options` parameter set to `roi` to add an example ROI, `colormap` to add a color lookup table, and `rgb` to return an RGB image.
 
 ##  4. <a name='Savingincomingdata'></a>Saving incoming data
 It may be desirable for the MRD server to save a copy of incoming data from the client.  For example, if the client is an MRI scanner, then the saved data can be used for offline simulations at a later time.  This may be particularly useful when the MRI scanner client is sending image data, as images are not stored in a scanner's raw data file and would otherwise require offline simulation of the MRI scanner reconstruction as well.
@@ -384,3 +395,20 @@ There are three scripts that may be useful when starting the Python server in a 
 - [sync-code-and-start-fire-python-server.sh](sync-code-and-start-fire-python-server.sh):  This script copies all files from ``/tmp/share/code/`` to ``/opt/code/python-ismrmrd-server/``.  These paths are relative to the chroot container and when run with FIRE, ``/tmp/share/code/`` is a shared folder from the host computer at ``%CustomerIceProgs%\fire\share\code\``.  This "sync" step allows Python code to be modified on the host computer and executed by the Python reconstruction process.  The Python reconstruction program is then started in the same way as in [start-fire-python-server.sh](start-fire-python-server.sh).  This is the startup script specified in the default fire.ini configuration file.  However, this script should not be used in stable projects, as overwriting existing files with those in ``/tmp/share/code`` is likely undesirable.
 
 - [start-fire-python-server-with-data-storage.sh](start-fire-python-server-with-data-storage.sh):  This script is the same as [start-fire-python-server.sh](start-fire-python-server.sh), but saves incoming data (raw k-space readouts or images) to files in ``/tmp/share/saved_data``, which is on the host computer at ``%CustomerIceProgs%\fire\share\saved_data``.  This is useful to save a copy of MRD formatted data (particularly for image-based workflows) for offline development, but this option should be used carefully, as raw data can be quite large and can overwhelm the limited hard drive space on the Windows host.
+
+##  6. <a name='CustomDockers'></a>Building a custom Docker image
+Integration of a custom module into a MRD server using this repository can often be achieved by creating only the module itself and using the server framework of python-ismrmrd-server without modification.  This can greatly simplify development and maintenance.
+
+To implement a new module, create a copy of an example one (e.g. [invertcontrast.py](invertcontrast.py)) as a starting point with a new name.  Add the required functionality to this module and optionally create a JSON config for real-time configuration (see [invertcontrast.json](invertcontrast.json) for example).
+
+The `kspacekelvin/fire-python` and `kspacekelvin/fire-python-devcon` Docker images can be used as starting points for building a custom Docker image.  The custom Dockerfile then only needs to copy over the module's .py (and .json if applicable) files and install required dependencies/packages.
+
+An example of this approach is provided in the [custom](./custom) folder, which contains:
+- [filter.py](./custom/filter.py): A module derived from [invertcontrast.py](invertcontrast.py) that implements an image [median_filter from the scipy package](https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.median_filter.html).  Compare this file to [invertcontrast.py from this commit](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/3f52bf1504b1fed56b28d29b9fff560c5138e9f3/invertcontrast.py) see to the changes made.
+- [filter.json](./custom/filter.json): A JSON config file that allows configuration of the median filter window size by the client during runtime.
+- [custom.dockerfile](./custom/custom.dockerfile): A simplified Dockerfile that uses this python-ismrmrd-server Docker as a starting point.
+
+To build the custom Docker image, open a terminal in the `custom` folder and run:
+```
+docker build --no-cache -t fire-python-custom -f custom.dockerfile ./
+```
