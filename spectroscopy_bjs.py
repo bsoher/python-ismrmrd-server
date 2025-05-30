@@ -180,7 +180,7 @@ def process_raw(group, connection, config, metadata):
     data = fft.ifft( data, axis=1)
 
     # Match Siemens convention of complex conjugate representation
-    data = np.conj(data)
+    # data = np.conj(data)
 
     # Match Siemens data scaling
     data = data * 2**25
@@ -203,28 +203,44 @@ def process_raw(group, connection, config, metadata):
     # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
     # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
     tmpImg = ismrmrd.Image.from_array(data, transpose=False)
- 
+    tmpImg2 = ismrmrd.Image.from_array(data*2, transpose=False)
+
     # Set the header information
     tmpImg.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), group[0].getHead()))
+    tmpImg2.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), group[0].getHead()))
+
+    # Change the series_index to have a different series
+    tmpImg2.image_series_index = 99
 
     # Single voxel
     tmpImg.field_of_view = (ctypes.c_float(data.shape[0]*metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
                             ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
                             ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
+    tmpImg2.field_of_view = (ctypes.c_float(data.shape[0]*metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
+                            ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
+                            ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
 
     tmpImg.image_index   = 1
     tmpImg.flags         = 2**5   # IMAGE_LAST_IN_AVERAGE
- 
+    tmpImg2.image_index   = 1
+    tmpImg2.flags         = 2**5   # IMAGE_LAST_IN_AVERAGE
+
     logging.info("Outgoing spectroscopy data is field_of_view %s, %s, %s" % (np.double(tmpImg.field_of_view[0]), np.double(tmpImg.field_of_view[1]), np.double(tmpImg.field_of_view[2])))
     logging.info("Outgoing spectroscopy data is matrix_size   %s, %s, %s" % (tmpImg.getHead().matrix_size[0], tmpImg.getHead().matrix_size[1], tmpImg.getHead().matrix_size[2]))
 
     # Set ISMRMRD Meta Attributes
     tmpMeta = ismrmrd.Meta()
     tmpMeta['DataRole']                            = 'Spectroscopy'
-    tmpMeta['ImageProcessingHistory']              = ['FIRE', 'SPECTRO', 'PYTHON']
+    tmpMeta['ImageProcessingHistory']              = ['FIRE', 'SPECTRO', 'PYTHON', 'TMP_IMG2']
     tmpMeta['Keep_image_geometry']                 = 1
     tmpMeta['SiemensControl_SpectroData']          = ['bool', 'true']
     #tmpMeta['SiemensControl_Suffix4DataFileName']  = ['string', '-1_1_1_1_1_1']
+
+    tmpMeta2 = ismrmrd.Meta()
+    tmpMeta2['DataRole']                            = 'Spectroscopy'
+    tmpMeta2['ImageProcessingHistory']              = ['FIRE', 'SPECTRO', 'PYTHON', 'TMP_IMG2']
+    tmpMeta2['Keep_image_geometry']                 = 1
+    tmpMeta2['SiemensControl_SpectroData']          = ['bool', 'true']
 
     # Change dwell time to account for removal of readout oversampling
     dwellTime = mrdhelper.get_userParameterDouble_value(metadata, 'DwellTime_0')  # in ms
@@ -234,16 +250,22 @@ def process_raw(group, connection, config, metadata):
     else:
         logging.info("Found acquisition dwell time from header: " + str(dwellTime*1000))
         tmpMeta['SiemensDicom_RealDwellTime']         = ['int', str(int(dwellTime*1000*2))]
- 
+        tmpMeta2['SiemensDicom_RealDwellTime']         = ['int', str(int(dwellTime*1000*2))]
+
     xml = tmpMeta.serialize()
     logging.debug("Image MetaAttributes: %s", xml)
     tmpImg.attribute_string = xml
+
+    xml2 = tmpMeta2.serialize()
+    tmpImg2.attribute_string = xml2
 
     images = [tmpImg]
 
     roiImg = plot_spectra(tmpImg, connection, config, metadata)
     if roiImg is not None:
         images.append(roiImg)
+
+    images.append(tmpImg2)
 
     return images
  

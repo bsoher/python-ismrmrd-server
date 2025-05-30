@@ -5,6 +5,7 @@ import logging
 import traceback
 import numpy as np
 import numpy.fft as fft
+from scipy.ndimage import median_filter
 import matplotlib.pyplot as plt
 import xml.dom.minidom
 import base64
@@ -139,7 +140,7 @@ def process(connection, config, mrdHeader):
 def process_raw(acqGroup, connection, config, mrdHeader):
     if len(acqGroup) == 0:
         return []
-
+    
     logging.info(f'-----------------------------------------------')
     logging.info(f'     process_raw called with {len(acqGroup)} readouts')
     logging.info(f'-----------------------------------------------')
@@ -302,10 +303,12 @@ def process_image(imgGroup, connection, config, mrdHeader):
         data = np.around(data)
         data = data.astype(np.int16)
 
-    # Invert image contrast
-    data = maxVal-data
-    data = np.abs(data)
-    np.save(debugFolder + "/" + "imgInverted.npy", data)
+    # Apply median filter
+    filterSize = mrdhelper.get_json_config_param(config, 'filterSize', default=0, type='int')
+    if filterSize > 0:
+        logging.info(f'Applying median filter with size {filterSize}')
+        data = median_filter(data, size=filterSize)
+        np.save(debugFolder + "/" + "imgFiltered.npy", data)
 
     if mrdhelper.get_json_config_param(config, 'options') == 'rgb':
         logging.info('Converting data into RGB')
@@ -371,10 +374,10 @@ def process_image(imgGroup, connection, config, mrdHeader):
         # Create a copy of the original ISMRMRD Meta attributes and update
         tmpMeta = meta[iImg]
         tmpMeta['DataRole']                       = 'Image'
-        tmpMeta['ImageProcessingHistory']         = ['PYTHON', 'INVERT']
+        tmpMeta['ImageProcessingHistory']         = ['PYTHON', 'FILT']
         tmpMeta['WindowCenter']                   = str((maxVal+1)/2)
         tmpMeta['WindowWidth']                    = str((maxVal+1))
-        tmpMeta['SequenceDescriptionAdditional']  = 'FIRE'
+        tmpMeta['SequenceDescriptionAdditional']  = 'FILT'
         tmpMeta['Keep_image_geometry']            = 1
 
         if mrdhelper.get_json_config_param(config, 'options') == 'roi':
@@ -384,7 +387,7 @@ def process_image(imgGroup, connection, config, mrdHeader):
 
         if mrdhelper.get_json_config_param(config, 'options') == 'colormap':
             # Example for setting colormap
-                tmpMeta['LUTFileName'] = 'MicroDeltaHotMetal.pal'
+            tmpMeta['LUTFileName'] = 'MicroDeltaHotMetal.pal'
 
         if mrdhelper.get_json_config_param(config, 'options') == 'rgb':
             # Example for setting RGB
@@ -397,6 +400,18 @@ def process_image(imgGroup, connection, config, mrdHeader):
 
             # RGB images shouldn't undergo further processing, e.g. orientation or distortion correction
             tmpMeta['InternalSend'] = 1
+
+        # Note the filtering in the ImageComments
+        if filterSize > 0:
+            tmpMeta['ImageComments'] = f'Median filter size {filterSize}'
+
+        # Add additional comments passed from config
+        comments = mrdhelper.get_json_config_param(config, 'comments', default='')
+        if comments != '':
+            if tmpMeta.get('ImageComments') is None:
+                tmpMeta['ImageComments'] = comments
+            else:
+                tmpMeta['ImageComments'] = tmpMeta['ImageComments'] + '\n' + comments
 
         # Add image orientation directions to MetaAttributes if not already present
         if tmpMeta.get('ImageRowDir') is None:
@@ -412,8 +427,7 @@ def process_image(imgGroup, connection, config, mrdHeader):
         imagesOut[iImg].attribute_string = metaXml
 
     # Send a copy of original (unmodified) images back too
-    # if mrdhelper.get_json_config_param(config, 'sendOriginal', default=False, type='bool') == True:
-    if True:
+    if mrdhelper.get_json_config_param(config, 'sendOriginal', default=False, type='bool') == True:
         stack = traceback.extract_stack()
         if stack[-2].name == 'process_raw':
             logging.warning('sendOriginal is true, but input was raw data, so no original images to return!')

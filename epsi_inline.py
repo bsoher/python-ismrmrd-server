@@ -1,33 +1,24 @@
 import ismrmrd
 import os
-import sys
-import itertools
 import logging
 import traceback
 import numpy as np
-import numpy.fft as fft
-import xml.dom.minidom
-import base64
 import ctypes
-import re
 import mrdhelper
 import constants
-from time import perf_counter
-import matplotlib.pyplot as plt
 
 from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inline_init_process_kt, inline_do_epsi
 
 # bjs imports
 from logging import FileHandler, Formatter
-#from pymidas_inline.epsi.do_epsi import do_init, do_epsi
 
-# BJS_DEBUG_PATH = "D:\\temp\\debug_fire\\"
-BJS_DEBUG_PATH = "/tmp/share/debug"
+BJS_DEBUG_PATH = "debug_fire"
+#BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
 # Folder for debug output files
 debugFolder = "/tmp/share/debug"
-# debugFolder = "D:\\temp\\debug_fire"
+#debugFolder = "D:\\temp\\debug_fire"
 
 logger_bjs = logging.getLogger("bjs_log")
 logger_bjs.setLevel(logging.DEBUG)
@@ -92,8 +83,9 @@ class BlockEpsi:
         self.sampling_interval  = 2e-6
 
         # dynamically set
-        self.do_setup           = True      # setup arrays first off
-        
+        self.do_setup_raw       = True      # setup arrays first off
+        self.do_setup_epsi      = True      # setup arrays first off
+
         self.fovx               = 280.0
         self.fovy               = 280.0
         self.fovz               = 180.0
@@ -125,6 +117,7 @@ class BlockEpsi:
         self.echo_phases        = None
         self.Is_GE              = False
         self.last_zindx         = 0
+        self.last_zindx_epsi    = 0
         
         self.curr_yindx = 0
         self.curr_zindx = 0
@@ -210,15 +203,28 @@ def process(connection, config, metadata):
         logging.info("Improperly formatted metadata or auxiliary variables: \n%s", metadata)
 
     # Continuously parse incoming data parsed from MRD messages
-    acq_group = []
+    acq_group_raw = []
+    acq_group_epsi = []
     ref_group = []
 
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
 
-    inline_method = 'raw'  # bjs ['raw', 'epsi'][block.ice_select]   # or 'epsi' or 'both'
+    # if block.ice_select in [0,4]:
+    #     inline_method = 'epsi'
+    # elif block.ice_select in [0,3]:
+    #     inline_method = 'raw'
+    # elif block.ice_select == 2:
+    #     inline_method = 'both'
+    # else:
+    #     block.ice_select = 'raw'
 
-#    inline_method = 'epsi' if block.ice_select in [0,2,4] else 'raw'
+    inline_method = 'both'
+
+    ser_num_raw = 0
+    ser_num_epsi = 99
+    if inline_method == 'both':
+        ser_num_epsi = 99
 
     try:
         for item in connection:
@@ -244,41 +250,40 @@ def process(connection, config, metadata):
                 zindx = item.idx.kspace_encode_step_2
                 yindx = item.idx.kspace_encode_step_1
 
-                if inline_method == 'raw':
-                    if block.do_setup:
+                if inline_method in ['raw','both']:
+                    if block.do_setup_raw:
                         block.ncha, block.nx = item.data.shape
                         dims = [block.nz, block.ny, block.nt, block.nx]
-                        block.water = []
-                        block.metab = []
+                        block.water_raw = []
+                        block.metab_raw = []
                         for i in range(block.ncha):
-                            block.water.append(np.zeros(dims, item.data.dtype))
-                            block.metab.append(np.zeros(dims, item.data.dtype))
-                        block.do_setup = False
+                            block.water_raw.append(np.zeros(dims, item.data.dtype))
+                            block.metab_raw.append(np.zeros(dims, item.data.dtype))
+                        block.do_setup_raw = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
                     if flag_ctr_kspace:             # Center of kspace data ignored here
                         pass
                     else:                           # Regular kspace acquisition
-                        acq_group.append(item)
+                        acq_group_raw.append(item)
                         if flag_last_epi:
-                            process_group_raw(block, acq_group, config, metadata)
+                            process_group_raw(block, acq_group_raw, config, metadata)
                             if item.idx.contrast == 1 and flag_last_yencode:
                                 logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
-                                images = send_raw(block, acq_group, metadata)
+                                images = send_raw(block, acq_group_raw, metadata, ser_num_raw)
                                 connection.send_image(images)
                                 block.last_zindx += 1
                                 for i in range(block.ncha):
-                                    block.water[i] = block.water[i] * 0.0
-                                    block.metab[i] = block.metab[i] * 0.0
-                            acq_group = []
+                                    block.water_raw[i] = block.water_raw[i] * 0.0
+                                    block.metab_raw[i] = block.metab_raw[i] * 0.0
+                            acq_group_raw = []
 
 
-                elif inline_method == 'epsi':
-                    if block.do_setup:
+                if inline_method in ['epsi','both']:
+                    if block.do_setup_epsi:
                         block.ncha, block.nx = item.data.shape
                         block.nx2 = int(block.nx // 2)
                         block.nt2 = int(block.nt // 2)
-
                         dims = [block.ncha, block.nt, block.nx]
                         dims_epsi = [block.ny, block.ncha, block.nx2, block.nt2]
                         block.ref = np.zeros(dims, item.data.dtype)
@@ -286,7 +291,7 @@ def process(connection, config, metadata):
                         block.metab = np.zeros(dims, item.data.dtype)
                         block.water_epsi = np.zeros(dims_epsi, item.data.dtype)
                         block.metab_epsi = np.zeros(dims_epsi, item.data.dtype)
-                        block.do_setup = False
+                        block.do_setup_epsi = False
                         block.ref_done = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
@@ -300,20 +305,20 @@ def process(connection, config, metadata):
                             ref_group = []
                             block_ref_done = True
                     else:                           # Regular kspace acquisition
-                        acq_group.append(item)
+                        acq_group_epsi.append(item)
                         if flag_last_epi:
-                            process_raw_to_epsi(block, acq_group)
+                            process_raw_to_epsi(block, acq_group_epsi)
                             if item.idx.contrast == 1 and flag_last_yencode:
                                 logger_bjs.info("**** bjs - send_epsi() -- zindx = %d, yindx = %d " % (zindx, yindx))
-                                images = send_epsi(block, acq_group, metadata)
+                                images = send_epsi(block, acq_group_epsi, metadata, ser_num_epsi)
                                 connection.send_image(images)
-                                block.last_zindx += 1
+                                block.last_zindx_epsi += 1
                                 for i in range(block.ncha):
                                     block.water[i] = block.water[i] * 0.0
                                     block.metab[i] = block.metab[i] * 0.0
                                     block.water_epsi[i] = block.water_epsi[i] * 0.0
                                     block.metab_epsi[i] = block.metab_epsi[i] * 0.0
-                            acq_group = []
+                            acq_group_epsi = []
                 else:
                     msg = "Inlne process method not recognized: %s", inline_method
                     logging.error(msg)
@@ -347,9 +352,9 @@ def process_group_raw(block, group, config, metadata):
     for item, iz, iy, it in zip(group, indz, indy, indt):
         for i in range(block.ncha):
             if group[0].idx.contrast == 0:
-                block.metab[i][iz, iy, it, :] = item.data[i,:]
+                block.metab_raw[i][iz, iy, it, :] = item.data[i,:]
             else:
-                block.water[i][iz, iy, it, :] = item.data[i,:]
+                block.water_raw[i][iz, iy, it, :] = item.data[i,:]
     return
 
 
@@ -364,7 +369,7 @@ def process_init_epsi(block, group, config, metadata):
         logger_bjs.info("Too many Z encodes in Init data group")
     if len(set(indy)) > 1:
         logger_bjs.info("Too many Y encodes in Init data group")
-    if len(set(indt)) != block.nt:
+    if len(set(indt)) != block.nt * 2:
         logger_bjs.info("Length of segment encodes list not equal to Nt in Init data group")
 
     for item in group:
@@ -422,7 +427,7 @@ def process_raw_to_epsi(block, group):
     return
 
 
-def send_raw(block, group, metadata):
+def send_raw(block, group, metadata, ser_num):
 
     zindx = block.last_zindx   # TODO bjs - what range do we take?
     images = []
@@ -442,7 +447,6 @@ def send_raw(block, group, metadata):
     posvecy = pos_cor + norm_cor * posoff
     posvecz = pos_tra + norm_tra * posoff
 
-
     # Set ISMRMRD Meta Attributes
     tmpMetaMet = ismrmrd.Meta()
     tmpMetaMet['DataRole'] = 'Spectroscopy'
@@ -451,17 +455,18 @@ def send_raw(block, group, metadata):
     tmpMetaMet['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaMet['InternalSend'] = 1      # skips SpecSend functor in ICE program - might keep header from modification?
 
-    tmpMetaMet['SiemensDicom_EchoTrainLength'] = 2
+    tmpMetaMet['SiemensDicom_EchoTrainLength'] = ['int', 2]
     tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW'
-    tmpMetaMet['SiemensDicom_PercentPhaseFoV'] = 1.0
-    tmpMetaMet['SiemensDicom_PercentSampling'] = 1.0
-    tmpMetaMet['SiemensDicom_NoOfCols'] = int(block.nx)
-    tmpMetaMet['SiemensDicom_SliceThickness'] = slthick
-    tmpMetaMet['SiemensDicom_ProtocolSliceNumber'] = zindx
-    tmpMetaMet['SiemensDicom_TE'] = metadata.sequenceParameters.TE[0]
-    tmpMetaMet['SiemensDicom_TR'] = metadata.sequenceParameters.TR[0]
-    tmpMetaMet['SiemensDicom_TI'] = metadata.sequenceParameters.TI[0]
+    tmpMetaMet['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
+    tmpMetaMet['SiemensDicom_PercentSampling'] = ['double', 1.0]
+    tmpMetaMet['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
+    tmpMetaMet['SiemensDicom_SliceThickness'] = ['double', slthick]
+    tmpMetaMet['SiemensDicom_ProtocolSliceNumber'] = ['double', zindx]
+    tmpMetaMet['SiemensDicom_TE'] = ['double', metadata.sequenceParameters.TE[0]]
+    tmpMetaMet['SiemensDicom_TR'] = ['double', metadata.sequenceParameters.TR[0]]
+    tmpMetaMet['SiemensDicom_TI'] = ['double', metadata.sequenceParameters.TI[0]]
     tmpMetaMet['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
+    tmpMetaMet['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
 
     tmpMetaWat = ismrmrd.Meta()
     tmpMetaWat['DataRole'] = 'Spectroscopy'
@@ -470,17 +475,18 @@ def send_raw(block, group, metadata):
     tmpMetaWat['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaWat['InternalSend'] = 1
 
-    tmpMetaWat['SiemensDicom_EchoTrainLength'] = 2
+    tmpMetaWat['SiemensDicom_EchoTrainLength'] = ['int', 2]
     tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_RAW'
-    tmpMetaWat['SiemensDicom_PercentPhaseFoV'] = 1.0
-    tmpMetaWat['SiemensDicom_PercentSampling'] = 1.0
-    tmpMetaWat['SiemensDicom_NoOfCols'] = int(block.nx)
-    tmpMetaWat['SiemensDicom_SliceThickness'] = slthick
-    tmpMetaWat['SiemensDicom_ProtocolSliceNumber'] = zindx
-    tmpMetaWat['SiemensDicom_TE'] = metadata.sequenceParameters.TE[1]
-    tmpMetaWat['SiemensDicom_TR'] = metadata.sequenceParameters.TR[1]
-    tmpMetaWat['SiemensDicom_TI'] = metadata.sequenceParameters.TI[0]
+    tmpMetaWat['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
+    tmpMetaWat['SiemensDicom_PercentSampling'] = ['double', 1.0]
+    tmpMetaWat['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
+    tmpMetaWat['SiemensDicom_SliceThickness'] = ['double', slthick]
+    tmpMetaWat['SiemensDicom_ProtocolSliceNumber'] = ['double', zindx]
+    tmpMetaWat['SiemensDicom_TE'] = ['double', metadata.sequenceParameters.TE[1]]
+    tmpMetaWat['SiemensDicom_TR'] = ['double', metadata.sequenceParameters.TR[1]]
+    tmpMetaWat['SiemensDicom_TI'] = ['double', metadata.sequenceParameters.TI[0]]
     tmpMetaWat['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
+    tmpMetaWat['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
 
 
     xml_metab = tmpMetaMet.serialize()
@@ -494,8 +500,8 @@ def send_raw(block, group, metadata):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab[icha][zindx, :,:,:].copy()      # TODO bjs - what range do we take?
-        water = block.water[icha][zindx, :,:,:].copy()
+        metab = block.metab_raw[icha][zindx, :,:,:].copy()
+        water = block.water_raw[icha][zindx, :,:,:].copy()
 
         ms = metab.shape
         ws = water.shape
@@ -508,9 +514,18 @@ def send_raw(block, group, metadata):
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
         tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
 
+        tmpHdrMet = tmpImgMet.getHead()
+        tmpHdrWat = tmpImgWat.getHead()
+
+        tmpHdrMet.image_series_index = ser_num
+        tmpHdrWat.image_series_index = ser_num
+
+        tmpHdrMet.image_index = block.out_indx + 0
+        tmpHdrWat.image_index = block.out_indx + 1
+
         # Set the header information
-        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
-        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpHdrMet, group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpHdrWat, group[0].getHead()))
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -519,22 +534,20 @@ def send_raw(block, group, metadata):
         tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
         tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
 
-        tmpImgMet.image_index = block.out_indx + 0
-        tmpImgWat.image_index = block.out_indx + 1
-        block.out_indx += 2
-
         tmpImgMet.attribute_string = xml_metab
         tmpImgWat.attribute_string = xml_water
 
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
+        block.out_indx += 2
+
     return images
 
 
-def send_epsi(block, group, metadata):
+def send_epsi(block, group, metadata, ser_num):
 
-    zindx = block.last_zindx  # TODO bjs - what range do we take?
+    zindx = block.last_zindx_epsi  # TODO bjs - what range do we take?
     images = []
 
     metadata.encoding[0].echoTrainLength = 2
@@ -644,9 +657,18 @@ def send_epsi(block, group, metadata):
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
         tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
 
+        tmpHdrMet = tmpImgMet.getHead()
+        tmpHdrWat = tmpImgWat.getHead()
+
+        tmpHdrMet.image_series_index = ser_num
+        tmpHdrWat.image_series_index = ser_num
+
+        tmpHdrMet.image_index = block.out_indx + 0
+        tmpHdrWat.image_index = block.out_indx + 1
+
         # Set the header information
-        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
-        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpHdrMet, group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpHdrWat, group[0].getHead()))
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -655,15 +677,13 @@ def send_epsi(block, group, metadata):
         tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
         tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
 
-        tmpImgMet.image_index = block.out_indx + 0
-        tmpImgWat.image_index = block.out_indx + 1
-        block.out_indx += 2
-
         tmpImgMet.attribute_string = xml_metab
         tmpImgWat.attribute_string = xml_water
 
         images.append(tmpImgMet)
         images.append(tmpImgWat)
+
+        block.out_indx += 2
 
     return images
 
