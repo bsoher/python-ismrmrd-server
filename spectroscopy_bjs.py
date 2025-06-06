@@ -18,17 +18,17 @@ import matplotlib.pyplot as plt
 debugFolder = "/tmp/share/debug"
  
 def process(connection, config, metadata):
-    logging.info("Config: \n%s", config)
+    logging.info("bjs-ccx Config: \n%s", config)
  
     # Metadata should be MRD formatted header, but may be a string
     # if it failed conversion earlier
     try:
         # Disabled due to incompatibility between PyXB and Python 3.8:
         # https://github.com/pabigot/pyxb/issues/123
-        # # logging.info("Metadata: \n%s", metadata.toxml('utf-8'))
+        # # logging.info("bjs-ccx Metadata: \n%s", metadata.toxml('utf-8'))
  
-        logging.info("Incoming dataset contains %d encodings", len(metadata.encoding))
-        logging.info("First encoding is of type '%s', with a field of view of (%s x %s x %s)mm^3 and a matrix size of (%s x %s x %s)",
+        logging.info("bjs-ccx Incoming dataset contains %d encodings", len(metadata.encoding))
+        logging.info("bjs-ccx First encoding is of type '%s', with a field of view of (%s x %s x %s)mm^3 and a matrix size of (%s x %s x %s)",
             metadata.encoding[0].trajectory,
             metadata.encoding[0].encodedSpace.matrixSize.x,
             metadata.encoding[0].encodedSpace.matrixSize.y,
@@ -38,10 +38,10 @@ def process(connection, config, metadata):
             metadata.encoding[0].encodedSpace.fieldOfView_mm.z)
  
     except:
-        logging.info("Improperly formatted metadata: \n%s", metadata)
+        logging.info("bjs-ccx Improperly formatted metadata: \n%s", metadata)
  
     # Continuously parse incoming data parsed from MRD messages
-    currentSeries = 0
+    currentSeries = 1
     acqGroup = []
     imgGroup = []
     waveformGroup = []
@@ -61,9 +61,11 @@ def process(connection, config, metadata):
                 # When this criteria is met, run process_raw() on the accumulated
                 # data, which returns images that are sent back to the client.
                 if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE):
-                    logging.info("Processing a group of k-space data")
-                    image = process_raw(acqGroup, connection, config, metadata)
+                    logging.info("bjs-ccx Processing a group of k-space data")
+                    image = process_raw(acqGroup, connection, config, metadata, series_index=currentSeries)
                     connection.send_image(image)
+                    image2 = process_raw(acqGroup, connection, config, metadata, series_index=currentSeries+1)
+                    connection.send_image(image2)
                     acqGroup = []
  
             # ----------------------------------------------------------
@@ -85,7 +87,7 @@ def process(connection, config, metadata):
                 # data, which returns images that are sent back to the client.
                 # e.g. when the series number changes:
                 if item.image_series_index != currentSeries:
-                    logging.info("Processing a group of images because series index changed to %d", item.image_series_index)
+                    logging.info("bjs-ccx Processing a group of images because series index changed to %d", item.image_series_index)
                     currentSeries = item.image_series_index
                     image = process_image(imgGroup, connection, config, metadata)
                     connection.send_image(image)
@@ -116,13 +118,13 @@ def process(connection, config, metadata):
         # This is also a fallback for handling image data, as the last
         # image in a series is typically not separately flagged.
         if len(acqGroup) > 0:
-            logging.info("Processing a group of k-space data (untriggered)")
+            logging.info("bjs-ccx Processing a group of k-space data (untriggered)")
             image = process_raw(acqGroup, connection, config, metadata)
             connection.send_image(image)
             acqGroup = []
  
         if len(imgGroup) > 0:
-            logging.info("Processing a group of images (untriggered)")
+            logging.info("bjs-ccx Processing a group of images (untriggered)")
             image = process_image(imgGroup, connection, config, metadata)
             connection.send_image(image)
             imgGroup = []
@@ -135,7 +137,7 @@ def process(connection, config, metadata):
         connection.send_close()
  
 
-def process_raw(group, connection, config, metadata):
+def process_raw(group, connection, config, metadata, series_index=0):
     # Format data into a [cha RO ave lin seg] array
     nAve = int(metadata.encoding[0].encodingLimits.average.maximum                - metadata.encoding[0].encodingLimits.average.minimum)                + 1
     nLin = int(metadata.encoding[0].encodingLimits.kspace_encoding_step_1.maximum - metadata.encoding[0].encodingLimits.kspace_encoding_step_1.minimum) + 1
@@ -149,7 +151,7 @@ def process_raw(group, connection, config, metadata):
     # 2x readout oversampling
     nRO = nRO * 2
 
-    logging.info("MRD header: %d averages, %d lines, %d segments" % (nAve, nLin, nSeg))
+    logging.info("bjs-ccx MRD header: %d averages, %d lines, %d segments" % (nAve, nLin, nSeg))
 
     aves = [acquisition.idx.average              for acquisition in group]
     lins = [acquisition.idx.kspace_encode_step_1 for acquisition in group]
@@ -168,7 +170,7 @@ def process_raw(group, connection, config, metadata):
     for acq, ave, lin, seg in zip(group, aves, lins, segs):
         data[:,:,ave,lin,seg] = acq.data[:,acq.discard_pre:(acq.data.shape[1]-acq.discard_post)]
 
-    logging.info("Incoming raw spectroscopy data is shape %s" % (data.shape,))
+    logging.info("bjs-ccx Incoming raw spectroscopy data is shape %s" % (data.shape,))
 
     # Select coil with the best SNR
     indBestCoil = np.argmax(np.mean(np.abs(data[:,:,0:9,0,0]),axis=(1,2)))
@@ -193,54 +195,44 @@ def process_raw(group, connection, config, metadata):
 
     # Send data back as complex singles
     data = data.astype(np.complex64)
-
     data = data.transpose()
 
-    logging.info("Outgoing spectroscopy data is shape %s" % (data.shape,))
+    if series_index != 0:
+        data = data * 2 * series_index      # slightly modify data by series
+
+    logging.info("bjs-ccx Outgoing spectroscopy data is shape %s" % (data.shape,))
 
     # Create new MRD instance for the processed image
     # from_array() should be called with 'transpose=False' to avoid warnings, and when called
     # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
     # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
     tmpImg = ismrmrd.Image.from_array(data, transpose=False)
-    tmpImg2 = ismrmrd.Image.from_array(data*2, transpose=False)
 
     # Set the header information
     tmpImg.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), group[0].getHead()))
-    tmpImg2.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), group[0].getHead()))
 
-    # Change the series_index to have a different series
-    tmpImg2.image_series_index = 99
+    # User defined series_index
+    tmpImg.image_series_index = series_index
+    indx_str = str(series_index)
 
     # Single voxel
     tmpImg.field_of_view = (ctypes.c_float(data.shape[0]*metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
                             ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
                             ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
-    tmpImg2.field_of_view = (ctypes.c_float(data.shape[0]*metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
-                            ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y/2),
-                            ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
 
     tmpImg.image_index   = 1
     tmpImg.flags         = 2**5   # IMAGE_LAST_IN_AVERAGE
-    tmpImg2.image_index   = 1
-    tmpImg2.flags         = 2**5   # IMAGE_LAST_IN_AVERAGE
 
-    logging.info("Outgoing spectroscopy data is field_of_view %s, %s, %s" % (np.double(tmpImg.field_of_view[0]), np.double(tmpImg.field_of_view[1]), np.double(tmpImg.field_of_view[2])))
-    logging.info("Outgoing spectroscopy data is matrix_size   %s, %s, %s" % (tmpImg.getHead().matrix_size[0], tmpImg.getHead().matrix_size[1], tmpImg.getHead().matrix_size[2]))
+    logging.info("bjs-ccx Outgoing spectroscopy data is field_of_view %s, %s, %s" % (np.double(tmpImg.field_of_view[0]), np.double(tmpImg.field_of_view[1]), np.double(tmpImg.field_of_view[2])))
+    logging.info("bjs-ccx Outgoing spectroscopy data is matrix_size   %s, %s, %s" % (tmpImg.getHead().matrix_size[0], tmpImg.getHead().matrix_size[1], tmpImg.getHead().matrix_size[2]))
 
     # Set ISMRMRD Meta Attributes
     tmpMeta = ismrmrd.Meta()
     tmpMeta['DataRole']                            = 'Spectroscopy'
-    tmpMeta['ImageProcessingHistory']              = ['FIRE', 'SPECTRO', 'PYTHON', 'TMP_IMG2']
+    tmpMeta['ImageProcessingHistory']              = ['FIRE', 'SPECTRO', 'PYTHON', 'TMP_IMG'+indx_str]
     tmpMeta['Keep_image_geometry']                 = 1
     tmpMeta['SiemensControl_SpectroData']          = ['bool', 'true']
     #tmpMeta['SiemensControl_Suffix4DataFileName']  = ['string', '-1_1_1_1_1_1']
-
-    tmpMeta2 = ismrmrd.Meta()
-    tmpMeta2['DataRole']                            = 'Spectroscopy'
-    tmpMeta2['ImageProcessingHistory']              = ['FIRE', 'SPECTRO', 'PYTHON', 'TMP_IMG2']
-    tmpMeta2['Keep_image_geometry']                 = 1
-    tmpMeta2['SiemensControl_SpectroData']          = ['bool', 'true']
 
     # Change dwell time to account for removal of readout oversampling
     dwellTime = mrdhelper.get_userParameterDouble_value(metadata, 'DwellTime_0')  # in ms
@@ -248,24 +240,18 @@ def process_raw(group, connection, config, metadata):
     if dwellTime is None:
         logging.error("Could not find DwellTime_0 in MRD header")
     else:
-        logging.info("Found acquisition dwell time from header: " + str(dwellTime*1000))
+        logging.info("bjs-ccx Found acquisition dwell time from header: " + str(dwellTime*1000))
         tmpMeta['SiemensDicom_RealDwellTime']         = ['int', str(int(dwellTime*1000*2))]
-        tmpMeta2['SiemensDicom_RealDwellTime']         = ['int', str(int(dwellTime*1000*2))]
 
     xml = tmpMeta.serialize()
     logging.debug("Image MetaAttributes: %s", xml)
     tmpImg.attribute_string = xml
 
-    xml2 = tmpMeta2.serialize()
-    tmpImg2.attribute_string = xml2
-
     images = [tmpImg]
 
-    roiImg = plot_spectra(tmpImg, connection, config, metadata)
-    if roiImg is not None:
-        images.append(roiImg)
-
-    images.append(tmpImg2)
+    # roiImg = plot_spectra(tmpImg, connection, config, metadata)
+    # if roiImg is not None:
+    #     images.append(roiImg)
 
     return images
  
@@ -278,7 +264,7 @@ def process_image(images, connection, config, metadata):
  
     logging.debug("Processing data with %d images of type %s", len(images), ismrmrd.get_dtype_from_data_type(images[0].data_type))
 
-    logging.info("    2D spectroscopic imaging size is %d x %d x %d with %d channels of type %s", images[0].matrix_size[0], images[0].matrix_size[1], images[0].matrix_size[2], images[0].channels, ismrmrd.get_dtype_from_data_type(images[0].data_type))
+    logging.info("bjs-ccx     2D spectroscopic imaging size is %d x %d x %d with %d channels of type %s", images[0].matrix_size[0], images[0].matrix_size[1], images[0].matrix_size[2], images[0].channels, ismrmrd.get_dtype_from_data_type(images[0].data_type))
    
     spectraImgs = process_spectra(images, connection, config, metadata)
 
@@ -313,7 +299,7 @@ def process_spectra(images, connection, config, metadata):
 
         # tmpData = tmpData.reshape((nImgRows, nImgCols, nSpecVectorSize))
         tmpData = tmpData.reshape((nImgCols, nImgRows, nSpecVectorSize))
-        logging.info("Reshaped back spectroscopy data is shape %s" % (tmpData.shape,))
+        logging.info("bjs-ccx Reshaped back spectroscopy data is shape %s" % (tmpData.shape,))
         
         tmpImg = ismrmrd.Image.from_array(tmpData, transpose=False)
      
@@ -340,8 +326,8 @@ def process_spectra(images, connection, config, metadata):
         tmpImg.image_index   = iImg
         tmpImg.flags         = 2**5   # IMAGE_LAST_IN_AVERAGE
      
-        logging.info("Outgoing spectroscopy data is field_of_view %s, %s, %s" % (np.double(tmpImg.field_of_view[0]), np.double(tmpImg.field_of_view[1]), np.double(tmpImg.field_of_view[2])))
-        logging.info("Outgoing spectroscopy data is matrix_size   %s, %s, %s" % (tmpImg.getHead().matrix_size[0], tmpImg.getHead().matrix_size[1], tmpImg.getHead().matrix_size[2]))
+        logging.info("bjs-ccx Outgoing spectroscopy data is field_of_view %s, %s, %s" % (np.double(tmpImg.field_of_view[0]), np.double(tmpImg.field_of_view[1]), np.double(tmpImg.field_of_view[2])))
+        logging.info("bjs-ccx Outgoing spectroscopy data is matrix_size   %s, %s, %s" % (tmpImg.getHead().matrix_size[0], tmpImg.getHead().matrix_size[1], tmpImg.getHead().matrix_size[2]))
 
         # Set ISMRMRD Meta Attributes
         tmpMeta = meta[iImg]
@@ -357,7 +343,7 @@ def process_spectra(images, connection, config, metadata):
         if dwellTime is None:
             logging.error("Could not find DwellTime_0 in MRD header")
         else:
-            logging.info("Found acquisition dwell time from header: " + str(dwellTime*1000))
+            logging.info("bjs-ccx Found acquisition dwell time from header: " + str(dwellTime*1000))
             tmpMeta['SiemensDicom_RealDwellTime']         = ['int', str(int(dwellTime*1000*2))]
      
         xml = tmpMeta.serialize()

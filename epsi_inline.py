@@ -12,8 +12,8 @@ from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inlin
 # bjs imports
 from logging import FileHandler, Formatter
 
-BJS_DEBUG_PATH = "debug_fire"
-#BJS_DEBUG_PATH = "/tmp/share/debug"
+# BJS_DEBUG_PATH = "debug_fire"
+BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
 # Folder for debug output files
@@ -106,7 +106,8 @@ class BlockEpsi:
         self.pix_spacing_3      = 10.0
         self.mrdata             = None
         self.out_filename       = ''
-        self.out_indx           = 1     # DICOM slice number indexed from 1
+        self.out_indx_raw       = 1     # DICOM slice number indexed from 1
+        self.out_indx_epsi      = 1     # DICOM slice number indexed from 1
         self.save_output        = True
         self.channel            = ''
         self.csa_pad_length     = 0
@@ -514,18 +515,15 @@ def send_raw(block, group, metadata, ser_num):
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
         tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
 
-        tmpHdrMet = tmpImgMet.getHead()
-        tmpHdrWat = tmpImgWat.getHead()
-
-        tmpHdrMet.image_series_index = ser_num
-        tmpHdrWat.image_series_index = ser_num
-
-        tmpHdrMet.image_index = block.out_indx + 0
-        tmpHdrWat.image_index = block.out_indx + 1
-
         # Set the header information
-        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpHdrMet, group[0].getHead()))
-        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpHdrWat, group[0].getHead()))
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+
+        tmpImgWat.image_series_index = ser_num
+        tmpImgWat.image_series_index = ser_num
+
+        tmpImgMet.image_index = block.out_indx_raw + 0
+        tmpImgWat.image_index = block.out_indx_raw + 1
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -540,7 +538,7 @@ def send_raw(block, group, metadata, ser_num):
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
-        block.out_indx += 2
+        block.out_indx_raw += 2
 
     return images
 
@@ -657,18 +655,15 @@ def send_epsi(block, group, metadata, ser_num):
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
         tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
 
-        tmpHdrMet = tmpImgMet.getHead()
-        tmpHdrWat = tmpImgWat.getHead()
-
-        tmpHdrMet.image_series_index = ser_num
-        tmpHdrWat.image_series_index = ser_num
-
-        tmpHdrMet.image_index = block.out_indx + 0
-        tmpHdrWat.image_index = block.out_indx + 1
-
         # Set the header information
-        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpHdrMet, group[0].getHead()))
-        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpHdrWat, group[0].getHead()))
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+
+        tmpImgMet.image_series_index = ser_num
+        tmpImgWat.image_series_index = ser_num
+
+        tmpImgMet.image_index = block.out_indx_epsi + 0
+        tmpImgWat.image_index = block.out_indx_epsi + 1
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -683,7 +678,7 @@ def send_epsi(block, group, metadata, ser_num):
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
-        block.out_indx += 2
+        block.out_indx_epsi += 2
 
     return images
 
