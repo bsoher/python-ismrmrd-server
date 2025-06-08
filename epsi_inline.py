@@ -451,13 +451,13 @@ def send_raw(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet = ismrmrd.Meta()
     tmpMetaMet['DataRole'] = 'Spectroscopy'
-    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS-RAW']
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB']
     tmpMetaMet['Keep_image_geometry'] = 1
     tmpMetaMet['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaMet['InternalSend'] = 1      # skips SpecSend functor in ICE program - might keep header from modification?
 
     tmpMetaMet['SiemensDicom_EchoTrainLength'] = ['int', 2]
-    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW'
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_METAB'
     tmpMetaMet['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
     tmpMetaMet['SiemensDicom_PercentSampling'] = ['double', 1.0]
     tmpMetaMet['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
@@ -471,13 +471,13 @@ def send_raw(block, group, metadata, ser_num):
 
     tmpMetaWat = ismrmrd.Meta()
     tmpMetaWat['DataRole'] = 'Spectroscopy'
-    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON']
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER']
     tmpMetaWat['Keep_image_geometry'] = 1
     tmpMetaWat['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaWat['InternalSend'] = 1
 
     tmpMetaWat['SiemensDicom_EchoTrainLength'] = ['int', 2]
-    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_RAW'
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_WATER'
     tmpMetaWat['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
     tmpMetaWat['SiemensDicom_PercentSampling'] = ['double', 1.0]
     tmpMetaWat['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
@@ -489,11 +489,9 @@ def send_raw(block, group, metadata, ser_num):
     tmpMetaWat['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
     tmpMetaWat['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
 
-
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
     logging.debug("Image MetaAttributes: %s", xml_metab)
-
 
     for icha in range(block.ncha):
         # Create new MRD instance for the processed image
@@ -566,13 +564,13 @@ def send_epsi(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet = ismrmrd.Meta()
     tmpMetaMet['DataRole'] = 'Spectroscopy'
-    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS-EPSI']
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-METAB']
     tmpMetaMet['Keep_image_geometry'] = 1
     tmpMetaMet['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaMet['InternalSend'] = 1      # skips SpecSend functor in ICE program - might keep header from modification?
 
     tmpMetaMet['SiemensDicom_EchoTrainLength'] = ['int', 2]
-    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI'
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_METAB'
     tmpMetaMet['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
     tmpMetaMet['SiemensDicom_PercentSampling'] = ['double', 1.0]
     tmpMetaMet['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
@@ -584,16 +582,15 @@ def send_epsi(block, group, metadata, ser_num):
     tmpMetaMet['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
     tmpMetaMet['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
 
-
     tmpMetaWat = ismrmrd.Meta()
     tmpMetaWat['DataRole'] = 'Spectroscopy'
-    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS-EPSI']
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-WATER']
     tmpMetaWat['Keep_image_geometry'] = 1
     tmpMetaWat['SiemensControl_SpectroData'] = ['bool', 'true']
     tmpMetaWat['InternalSend'] = 1
 
     tmpMetaWat['SiemensDicom_EchoTrainLength'] = ['int', 2]
-    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_EPSI'
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'FIRE_EPSI_WATER'
     tmpMetaWat['SiemensDicom_PercentPhaseFoV'] = ['double', 1.0]
     tmpMetaWat['SiemensDicom_PercentSampling'] = ['double', 1.0]
     tmpMetaWat['SiemensDicom_NoOfCols'] = ['int', int(block.nx)]
@@ -604,7 +601,6 @@ def send_epsi(block, group, metadata, ser_num):
     tmpMetaWat['SiemensDicom_TI'] = ['double', metadata.sequenceParameters.TI[0]]
     tmpMetaWat['SiemensDicom_PixelSpacing'] = [float(block.fovx / block.nx), float(block.fovy / block.ny)]
     tmpMetaWat['SiemensDicom_RealDwellTime'] = ['int', str(int(block.sampling_interval * 1e6 * 1000 * 2))]
-
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
