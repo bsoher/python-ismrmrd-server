@@ -119,7 +119,7 @@ class BlockEpsi:
         self.Is_GE              = False
         self.last_zindx         = 0
         self.last_zindx_epsi    = 0
-        
+
         self.curr_yindx = 0
         self.curr_zindx = 0
 
@@ -174,16 +174,16 @@ def process(connection, config, metadata):
     block = BlockEpsi()
 
     logging.info("Config: \n%s", config)
- 
+
     # Metadata should be MRD formatted header, but may be a string
     # if it failed conversion earlier
     try:
         # Disabled due to incompatibility between PyXB and Python 3.8:
         # https://github.com/pabigot/pyxb/issues/123
         # # logging.info("Metadata: \n%s", metadata.toxml('utf-8'))
- 
+
         logging.info("Incoming dataset contains %d encodings", len(metadata.encoding))
-        logging.info("First encoding is of type '%s', with a field of view of (%s x %s x %s)mm^3 and a matrix size of (%s x %s x %s)",
+        logging.info("First encoding is of type '%s', with a matrix size of (%s x %s x %s) and a field of view of (%s x %s x %s)mm^3",
             metadata.encoding[0].trajectory,
             metadata.encoding[0].encodedSpace.matrixSize.x,
             metadata.encoding[0].encodedSpace.matrixSize.y,
@@ -220,7 +220,7 @@ def process(connection, config, metadata):
     # else:
     #     block.ice_select = 'raw'
 
-    inline_method = 'both'
+    inline_method = 'raw'
 
     ser_num_raw = 0
     ser_num_epsi = 99
@@ -247,7 +247,7 @@ def process(connection, config, metadata):
                 flag_ctr_kspace = item.user_int[2] > 0
                 flag_last_epi = item.user_int[1] > 0
                 flag_last_yencode = item.user_int[3] > 0    # bjs orig - item.idx.kspace_encode_step_1 == block.ny - 1
-                
+
                 zindx = item.idx.kspace_encode_step_2
                 yindx = item.idx.kspace_encode_step_1
 
@@ -280,7 +280,7 @@ def process(connection, config, metadata):
                             acq_group_raw = []
 
 
-                if inline_method in ['epsi','both']:
+                elif inline_method in ['epsi','both']:
                     if block.do_setup_epsi:
                         block.ncha, block.nx = item.data.shape
                         block.nx2 = int(block.nx // 2)
@@ -327,14 +327,14 @@ def process(connection, config, metadata):
 
             elif item is None:
                 break
- 
+
             else:
                 logging.error("Unsupported data  type %s", type(item).__name__)
- 
+
     except Exception as e:
         logging.error(traceback.format_exc())
         connection.send_logging(constants.MRD_LOGGING_ERROR, traceback.format_exc())
- 
+
     finally:
         connection.send_close()
 
@@ -504,8 +504,10 @@ def send_raw(block, group, metadata, ser_num):
 
         ms = metab.shape
         ws = water.shape
-        metab.shape = ms[0], ms[1] * ms[2]
-        water.shape = ws[0], ws[1] * ws[2]
+        metab.shape = ms[0], ms[1], ms[2]
+        water.shape = ws[0], ws[1], ws[2]
+        #metab.shape = ms[0], ms[1] * ms[2]
+        #water.shape = ws[0], ws[1] * ws[2]
 
         # metab = np.conj(metab)
         # water = np.conj(water)
