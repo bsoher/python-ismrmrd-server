@@ -1,3 +1,5 @@
+
+
 import constants
 import ismrmrd
 import ctypes
@@ -36,7 +38,8 @@ class Connection:
             constants.MRD_MESSAGE_TEXT:                self.read_text,
             constants.MRD_MESSAGE_ISMRMRD_ACQUISITION: self.read_acquisition,
             constants.MRD_MESSAGE_ISMRMRD_WAVEFORM:    self.read_waveform,
-            constants.MRD_MESSAGE_ISMRMRD_IMAGE:       self.read_image
+            constants.MRD_MESSAGE_ISMRMRD_IMAGE:       self.read_image,
+            constants.MRD_MESSAGE_ISMRMRD_FEEDBACK:    self.read_feedback
         }
 
     def create_save_file(self):
@@ -144,6 +147,10 @@ class Connection:
         length_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_LENGTH)
         return constants.MrdMessageLength.unpack(length_bytes)[0]
 
+    def read_mrd_message_attrib_length(self):
+        length_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_ATTRIB_LENGTH)
+        return constants.MrdMessageAttribLength.unpack(length_bytes)[0]
+
     # ----- MRD_MESSAGE_CONFIG_FILE (1) ----------------------------------------
     # This message contains the file name of a configuration file used for 
     # image reconstruction/post-processing.  The file must exist on the server.
@@ -159,8 +166,8 @@ class Connection:
     def read_config_file(self):
         logging.info("<-- Received MRD_MESSAGE_CONFIG_FILE (1)")
         config_file_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_CONFIGURATION_FILE)
-        config_file = constants.MrdMessageConfigurationFile.unpack(config_file_bytes)[0]
-        config_file = config_file.split(b'\x00',1)[0].decode('utf-8')  # Strip off null terminators in fixed 1024 size
+        config_file = constants.MrdMessageConfigurationFile.unpack(config_file_bytes)[0].decode("utf-8")
+        config_file = config_file.split('\x00',1)[0]  # Strip off null terminators in fixed 1024 size
 
         logging.debug("    " + config_file)
         if (config_file == "savedataonly"):
@@ -200,7 +207,7 @@ class Connection:
         logging.info("<-- Received MRD_MESSAGE_CONFIG_TEXT (2)")
         length = self.read_mrd_message_length()
         config = self.read(length)
-        config = config.split(b'\x00',1)[0].decode('utf-8')  # Strip off null teminator
+        config = config.decode("utf-8").split('\x00',1)[0]  # Strip off null teminator
 
         if self.savedata is True:
             if self.dset is None:
@@ -231,7 +238,7 @@ class Connection:
         logging.info("<-- Received MRD_MESSAGE_METADATA_XML_TEXT (3)")
         length = self.read_mrd_message_length()
         metadata = self.read(length)
-        metadata = metadata.split(b'\x00',1)[0].decode('utf-8')  # Strip off null teminator
+        metadata = metadata.decode("utf-8").split('\x00',1)[0]  # Strip off null teminator
 
         if self.savedata is True:
             if self.dset is None:
@@ -251,10 +258,6 @@ class Connection:
 
     def read_close(self):
         logging.info("<-- Received MRD_MESSAGE_CLOSE (4)")
-        logging.info("    Total received acquisitions: %5d", self.recvAcqs)
-        logging.info("    Total received images:       %5d", self.recvImages)
-        logging.info("    Total received waveforms:    %5d", self.recvWaveforms)
-        logging.info("------------------------------------------")
 
         if self.savedata is True:
             if self.dset is None:
@@ -286,7 +289,7 @@ class Connection:
         logging.info("<-- Received MRD_MESSAGE_TEXT (5)")
         length = self.read_mrd_message_length()
         text = self.read(length)
-        text = text.split(b'\x00',1)[0].decode('utf-8')  # Strip off null teminator
+        text = text.decode("utf-8").split('\x00',1)[0]  # Strip off null teminator
         logging.info("    %s", text)
         return text
 
@@ -368,7 +371,7 @@ class Connection:
         else:
             logging.debug("   Attributes: %s", attribute_bytes.decode('utf-8'))
 
-        image = ismrmrd.Image(header_bytes, attribute_bytes.split(b'\x00',1)[0].decode('utf-8'))  # Strip off null teminator
+        image = ismrmrd.Image(header_bytes, attribute_bytes.decode('utf-8').split('\x00',1)[0])  # Strip off null teminator
 
         logging.info("    Image is size %d x %d x %d with %d channels of type %s", image.getHead().matrix_size[0], image.getHead().matrix_size[1], image.getHead().matrix_size[2], image.channels, ismrmrd.get_dtype_from_data_type(image.data_type))
         def calculate_number_of_entries(nchannels, xs, ys, zs):
@@ -419,3 +422,50 @@ class Connection:
 
         return waveform
 
+    # ----- MRD_MESSAGE_ISMRMRD_FEEDBACK (1028) -----------------------------
+    # This message contains real-time feedback data.
+    # Message consists of:
+    #   ID               (   2 bytes, unsigned short)
+    #   Name length      (   4 bytes, uint32_t      )
+    #   Name             (  variable, char          )
+    #   Data length      (   4 bytes, uint32_t      )
+    #   Data             (  variable, char          )
+    def send_feedback(self, name, data):
+        with self.lock:
+            logging.info("--> Sending MRD_MESSAGE_FEEDBACK (1028)")
+            self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_FEEDBACK))
+
+            name_with_nul = '%s\0' % name # Add null terminator
+            self.socket.send(constants.MrdMessageLength.pack(len(name_with_nul.encode())))
+            self.socket.send(name_with_nul.encode())
+
+            self.socket.send(constants.MrdMessageLength.pack(ctypes.sizeof(data)))
+            self.socket.send(data)
+
+    def read_feedback(self):
+        logging.info("<-- Received MRD_MESSAGE_FEEDBACK (1028)")
+        nameLength = self.read_mrd_message_length()
+        name = self.read(nameLength)
+        name = name.decode("utf-8").split('\x00',1)[0]  # Strip off null teminator
+
+        dataLength = self.read_mrd_message_length()
+        data = self.read(dataLength)
+
+        logging.info("    Name is %s with %d bytes of data: %s" % (name, dataLength, np.frombuffer(data, dtype=np.uint8)))
+
+        class FeedbackData(ctypes.Structure):
+            _pack_ = 1
+            _fields_ = [
+                ('myBool',   ctypes.c_bool),      #          1 byte
+                ('myInt64s', ctypes.c_int64 *2),  # 2 * 8 = 16 bytes
+                ('myFloat',  ctypes.c_float)      #          4 bytes
+            ]                                     #       = 21 bytes total
+
+        dataStruct = FeedbackData()
+        ctypes.memmove(ctypes.addressof(dataStruct), data, ctypes.sizeof(dataStruct))
+        logging.info("Received feedback struct with data:")
+        logging.info("dataStruct.myBool    is: %s" % dataStruct.myBool)
+        logging.info("dataStruct.myInt64s are: %s" % list(dataStruct.myInt64s))
+        logging.info("dataStruct.myFloats  is: %s" % dataStruct.myFloat)
+
+        return (name, data)

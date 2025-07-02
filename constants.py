@@ -33,6 +33,7 @@ MRD_MESSAGE_ISMRMRD_IMAGEWITHATTRIB_REAL_SHORT     = 1021 # DEPRECATED
 MRD_MESSAGE_ISMRMRD_IMAGE                          = 1022
 MRD_MESSAGE_RECONDATA                              = 1023 # UNSUPPORTED
 MRD_MESSAGE_ISMRMRD_WAVEFORM                       = 1026
+MRD_MESSAGE_ISMRMRD_FEEDBACK                       = 1028
 MRD_MESSAGE_EXT_ID_MAX                             = 4096 # CONTROL
 
 MrdMessageLength = struct.Struct('<I')

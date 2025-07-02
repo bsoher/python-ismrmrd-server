@@ -220,7 +220,7 @@ def process(connection, config, metadata):
     # else:
     #     block.ice_select = 'raw'
 
-    inline_method = 'raw'
+    inline_method = 'epsi'
 
     ser_num_raw = 0
     ser_num_epsi = 99

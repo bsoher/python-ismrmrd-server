@@ -175,8 +175,8 @@ def inline_calc_first_echo_shift(nx, data, channel):
 
     if test1 or test2:
         schan = f'{channel:2d}'
-        soff0 = f'{offs2[0]:4.1f}'
-        soff1 = f'{offs2[1]:4.1f}'
+        soff0 = f'{offs2[0]:4.6f}'
+        soff1 = f'{offs2[1]:4.6f}'
         snx2  = f'{int(nx / 2):3d}'
         logging.info(' : Inline Chan ' + schan + ' Odd/Even echo at points ' + soff0 + ' / ' + soff1 + ' (should be ' + snx2 + ')')
 
@@ -237,7 +237,7 @@ def inline_init_traj_corr(block):
 
         freq_shift += inline_calc_freq_drift(block, data, ichan)
 
-    # Get average value of frequency shift (if done) and multiply by 1.7 to estimate final value.
+    # Get average value of frequency shift and multiply by 1.7 to estimate final value.
     # Empirical modification that is somewhere between linear and exponential - see Ebel 2004
 
     val = freq_shift / nchan
