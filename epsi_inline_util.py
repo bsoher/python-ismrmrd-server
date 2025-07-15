@@ -210,7 +210,7 @@ def inline_calc_freq_drift(block, data, ichan):
 
 def inline_init_traj_corr(block):
     '''
-    The REF acq data must be stored in block.water array for this to work
+    The REF acq data must be stored for this to work
 
     Read in k-space trajectory file and run echo position and drift
     calculations. Store in block for SI use.

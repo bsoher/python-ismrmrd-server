@@ -17,6 +17,7 @@ import analyzeflow
 import spectroscopy_bjs
 import spectroscopy_bjs_interleaved
 import epsi_inline
+import epsi_inline_slow
 #import vespa.interfaces.inline.vespa_inline_engine as vie
 
 class Server:
@@ -128,6 +129,9 @@ class Server:
             elif (config == "epsi_inline"):
                 logging.info("Starting epsi processing based on config")
                 epsi_inline.process(connection, configAdditional, metadata)
+            elif (config == "epsi_inline_slow"):
+                logging.info("Starting epsi processing based on config")
+                epsi_inline_slow.process(connection, configAdditional, metadata)
             elif (config == "analyzeflow"):
                 logging.info("Starting analyzeflow processing based on config")
                 analyzeflow.process(connection, configAdditional, metadata)

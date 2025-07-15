@@ -117,8 +117,10 @@ class BlockEpsi:
         self.echo_shifts        = None
         self.echo_phases        = None
         self.Is_GE              = False
-        self.last_zindx         = 0
-        self.last_zindx_epsi    = 0
+        self.last_zindx_full         = 0
+        self.last_zindx_part         = 0
+        self.last_zindx_epsi_full    = 0
+        self.last_zindx_epsi_part    = 0
 
         self.curr_yindx = 0
         self.curr_zindx = 0
@@ -130,6 +132,17 @@ class BlockEpsi:
         self.metab = None
         self.water_epsi = None
         self.metab_epsi = None
+
+        self.ref_full = None
+        self.ref_part = None
+        self.water_full = None
+        self.water_part = None
+        self.metab_full = None
+        self.metab_part = None
+        self.water_epsi_full = None
+        self.water_epsi_part = None
+        self.metab_epsi_full = None
+        self.metab_epsi_part = None
 
     @property
     def n_channels(self):
@@ -208,8 +221,15 @@ def process(connection, config, metadata):
     acq_group_epsi = []
     ref_group = []
 
+    acq_group_raw_full = []
+    acq_group_raw_part = []
+    acq_group_epsi_full = []
+    acq_group_epsi_part = []
+    ref_group_full = []
+    ref_group_part = []
+
     logger_bjs.info("----------------------------------------------------------------------------------------")
-    logger_bjs.info("Start EPSI.py run")
+    logger_bjs.info("Start EPSI_SLOW.py run")
 
     # if block.ice_select in [0,4]:
     #     inline_method = 'epsi'
@@ -222,10 +242,11 @@ def process(connection, config, metadata):
 
     inline_method = 'both'
 
-    ser_num_raw = 0
-    ser_num_epsi = 99
-    if inline_method == 'both':
-        ser_num_epsi = 99
+    ser_num_raw_full = 0
+    ser_num_raw_part = 1
+    ser_num_epsi_full = 2
+    ser_num_epsi_part = 3
+
 
     try:
         for item in connection:
@@ -250,34 +271,51 @@ def process(connection, config, metadata):
 
                 zindx = item.idx.kspace_encode_step_2
                 yindx = item.idx.kspace_encode_step_1
+                iset = item.idx.set
 
                 if inline_method in ['raw','both']:
                     if block.do_setup_raw:
                         block.ncha, block.nx = item.data.shape
                         dims = [block.nz, block.ny, block.nt, block.nx]
-                        block.water_raw = []
-                        block.metab_raw = []
+                        block.water_raw_full = []
+                        block.metab_raw_part = []
                         for i in range(block.ncha):
-                            block.water_raw.append(np.zeros(dims, item.data.dtype))
-                            block.metab_raw.append(np.zeros(dims, item.data.dtype))
+                            block.water_raw_full.append(np.zeros(dims, item.data.dtype))
+                            block.metab_raw_full.append(np.zeros(dims, item.data.dtype))
                         block.do_setup_raw = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
                     if flag_ctr_kspace:             # Center of kspace data ignored here
                         pass
                     else:                           # Regular kspace acquisition
-                        acq_group_raw.append(item)
+                        if iset == 0:
+                            acq_group_raw_full.append(item)
+                        else:
+                            acq_group_raw_part.append(item)
+
                         if flag_last_epi:
-                            process_group_raw(block, acq_group_raw, config, metadata)
-                            if item.idx.contrast == 1 and flag_last_yencode:
-                                logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
-                                images = send_raw(block, acq_group_raw, metadata, ser_num_raw)
-                                connection.send_image(images)
-                                block.last_zindx += 1
-                                for i in range(block.ncha):
-                                    block.water_raw[i] = block.water_raw[i] * 0.0
-                                    block.metab_raw[i] = block.metab_raw[i] * 0.0
-                            acq_group_raw = []
+                            if iset == 0:
+                                process_group_raw_full(block, acq_group_raw_full, config, metadata)
+                                if item.idx.contrast == 1 and flag_last_yencode:
+                                    logger_bjs.info("**** bjs - send_raw_full() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
+                                    images = send_raw_full(block, acq_group_raw_full, metadata, ser_num_raw_full)
+                                    connection.send_image(images)
+                                    block.last_zindx_full += 1
+                                    for i in range(block.ncha):
+                                        block.water_raw_full[i] = block.water_raw_full[i] * 0.0
+                                        block.metab_raw_full[i] = block.metab_raw_full[i] * 0.0
+                                acq_group_raw_full = []
+                            else:
+                                process_group_raw_part(block, acq_group_raw_part, config, metadata)
+                                if item.idx.contrast == 1 and flag_last_yencode:
+                                    logger_bjs.info("**** bjs - send_raw_part() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
+                                    images = send_raw_part(block, acq_group_raw_part, metadata, ser_num_raw_part)
+                                    connection.send_image(images)
+                                    block.last_zindx_part += 1
+                                    for i in range(block.ncha):
+                                        block.water_raw_part[i] = block.water_raw_part[i] * 0.0
+                                        block.metab_raw_part[i] = block.metab_raw_part[i] * 0.0
+                                acq_group_raw_part = []
 
 
                 if inline_method in ['epsi','both']:
@@ -288,10 +326,15 @@ def process(connection, config, metadata):
                         dims = [block.ncha, block.nt, block.nx]
                         dims_epsi = [block.ny, block.ncha, block.nx2, block.nt2]
                         block.ref = np.zeros(dims, item.data.dtype)
-                        block.water = np.zeros(dims, item.data.dtype)
-                        block.metab = np.zeros(dims, item.data.dtype)
-                        block.water_epsi = np.zeros(dims_epsi, item.data.dtype)
-                        block.metab_epsi = np.zeros(dims_epsi, item.data.dtype)
+                        block.ref_part = np.zeros(dims, item.data.dtype)        # temp storage as only FULL used to init
+                        block.water_full = np.zeros(dims, item.data.dtype)
+                        block.water_part = np.zeros(dims, item.data.dtype)
+                        block.metab_full = np.zeros(dims, item.data.dtype)
+                        block.metab_part = np.zeros(dims, item.data.dtype)
+                        block.water_epsi_full = np.zeros(dims_epsi, item.data.dtype)
+                        block.water_epsi_part = np.zeros(dims_epsi, item.data.dtype)
+                        block.metab_epsi_full = np.zeros(dims_epsi, item.data.dtype)
+                        block.metab_epsi_part = np.zeros(dims_epsi, item.data.dtype)
                         block.do_setup_epsi = False
                         block.ref_done = False
                         block.sampling_interval = item.sample_time_us * 1e-6
@@ -300,39 +343,78 @@ def process(connection, config, metadata):
                     block.curr_zindx = zindx
 
                     if flag_ctr_kspace:             # Center of kspace data
-                        ref_group.append(item)
-                        if item.idx.contrast == 1 and flag_last_epi:
-                            process_init_epsi(block, ref_group, config, metadata)
-                            ref_group = []
-                            block_ref_done = True
+                        if iset == 0:
+                            ref_group_full.append(item)
+                            if item.idx.contrast == 1 and flag_last_epi:
+                                process_init_epsi_full(block, ref_group_full, config, metadata)
+                                ref_group_full = []
+                        else:
+                            ref_group_part.append(item)
+                            if item.idx.contrast == 1 and flag_last_epi:
+                                process_init_epsi_part(block, ref_group_part, config, metadata)
+                                ref_group_part = []
+
                     else:                           # Regular kspace acquisition
-                        acq_group_epsi.append(item)
+                        if iset == 0:
+                            acq_group_epsi_full.append(item)
+                        else:
+                            acq_group_epsi_part.append(item)
+
                         if flag_last_epi:
-                            process_raw_to_epsi(block, acq_group_epsi)
-                            if item.idx.contrast == 1 and flag_last_yencode:
-                                logger_bjs.info("**** bjs - send_epsi() -- zindx = %d, yindx = %d " % (zindx, yindx))
+                            if iset == 0:
+                                process_raw_to_epsi_full(block, acq_group_epsi_full)
+                                if item.idx.contrast == 1 and flag_last_yencode:
+                                    logger_bjs.info("**** bjs - send_epsi_full() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
 
-                                if block.swap_lr:
-                                    for ichan in range(block.ncha):
-                                        for x in range(int(block.nx / 2)):
-                                            for t in range(int(block.nt / 2)):
-                                                tmp = np.fliplr(np.squeeze(block.water_epsi[:, ichan, x, t]))
-                                                tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                block.water_epsi[:, ichan, x, t] = tmp
+                                    if block.swap_lr:
+                                        for ichan in range(block.ncha):
+                                            for x in range(int(block.nx / 2)):
+                                                for t in range(int(block.nt / 2)):
+                                                    tmp = np.fliplr(np.squeeze(block.water_epsi_full[:, ichan, x, t]))
+                                                    tmp[0] = 0 + 0j  # bjs - may not need this?
+                                                    block.water_epsi_full[:, ichan, x, t] = tmp
 
-                                                tmp = np.fliplr(np.squeeze(block.metab_epsi[:, ichan, x, t]))
-                                                tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                block.metab_epsi[:, ichan, x, t] = tmp
+                                                    tmp = np.fliplr(np.squeeze(block.metab_epsi_full[:, ichan, x, t]))
+                                                    tmp[0] = 0 + 0j  # bjs - may not need this?
+                                                    block.metab_epsi_full[:, ichan, x, t] = tmp
 
-                                images = send_epsi(block, acq_group_epsi, metadata, ser_num_epsi)
-                                connection.send_image(images)
-                                block.last_zindx_epsi += 1
-                                for i in range(block.ncha):
-                                    block.water[i] = block.water[i] * 0.0
-                                    block.metab[i] = block.metab[i] * 0.0
-                                    block.water_epsi[i] = block.water_epsi[i] * 0.0
-                                    block.metab_epsi[i] = block.metab_epsi[i] * 0.0
-                            acq_group_epsi = []
+
+                                    images = send_epsi_full(block, acq_group_epsi_full, metadata, ser_num_epsi_full)
+                                    connection.send_image(images)
+                                    block.last_zindx_epsi_full += 1
+                                    for i in range(block.ncha):
+                                        block.water_full[i] = block.water_full[i] * 0.0
+                                        block.metab_full[i] = block.metab_full[i] * 0.0
+                                        block.water_epsi_full[i] = block.water_epsi_full[i] * 0.0
+                                        block.metab_epsi_full[i] = block.metab_epsi_full[i] * 0.0
+                                acq_group_epsi_full = []
+
+                            else:
+                                process_raw_to_epsi_part(block, acq_group_epsi_part)
+                                if item.idx.contrast == 1 and flag_last_yencode:
+                                    logger_bjs.info("**** bjs - send_epsi_part() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
+
+                                    if block.swap_lr:
+                                        for ichan in range(block.ncha):
+                                            for x in range(int(block.nx / 2)):
+                                                for t in range(int(block.nt / 2)):
+                                                    tmp = np.fliplr(np.squeeze(block.water_epsi_part[:, ichan, x, t]))
+                                                    tmp[0] = 0 + 0j  # bjs - may not need this?
+                                                    block.water_epsi_part[:, ichan, x, t] = tmp
+
+                                                    tmp = np.fliplr(np.squeeze(block.metab_epsi_part[:, ichan, x, t]))
+                                                    tmp[0] = 0 + 0j  # bjs - may not need this?
+                                                    block.metab_epsi_part[:, ichan, x, t] = tmp
+
+                                    images = send_epsi_part(block, acq_group_epsi_part, metadata, ser_num_epsi_part)
+                                    connection.send_image(images)
+                                    block.last_zindx_epsi_part += 1
+                                    for i in range(block.ncha):
+                                        block.water_part[i] = block.water_part[i] * 0.0
+                                        block.metab_part[i] = block.metab_part[i] * 0.0
+                                        block.water_epsi_part[i] = block.water_epsi_part[i] * 0.0
+                                        block.metab_epsi_part[i] = block.metab_epsi_part[i] * 0.0
+                                acq_group_epsi_part = []
                 else:
                     msg = "Inlne process method not recognized: %s", inline_method
                     logging.error(msg)
@@ -352,27 +434,47 @@ def process(connection, config, metadata):
         connection.send_close()
 
 
-def process_group_raw(block, group, config, metadata):
+def process_group_raw_full(block, group, config, metadata):
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
     indy = [item.idx.kspace_encode_step_1 for item in group]
     indt = list(range(block.nt))
 
     if len(set(indz)) > 1:
-        logger_bjs.info("Too many Z encodes in TR data group")
+        logger_bjs.info("process_group_raw_full(): Too many Z encodes in TR data group")
     if len(set(indy)) > 1:
-        logger_bjs.info("Too many Y encodes in TR data group")
+        logger_bjs.info("process_group_raw_full(): Too many Y encodes in TR data group")
 
     for item, iz, iy, it in zip(group, indz, indy, indt):
         for i in range(block.ncha):
             if group[0].idx.contrast == 0:
-                block.metab_raw[i][iz, iy, it, :] = item.data[i,:]
+                block.metab_raw_full[i][iz, iy, it, :] = item.data[i,:]
             else:
-                block.water_raw[i][iz, iy, it, :] = item.data[i,:]
+                block.water_raw_full[i][iz, iy, it, :] = item.data[i,:]
     return
 
 
-def process_init_epsi(block, group, config, metadata):
+def process_group_raw_part(block, group, config, metadata):
+
+    indz = [item.idx.kspace_encode_step_2 for item in group]
+    indy = [item.idx.kspace_encode_step_1 for item in group]
+    indt = list(range(block.nt))
+
+    if len(set(indz)) > 1:
+        logger_bjs.info("process_group_raw_part(): Too many Z encodes in TR data group")
+    if len(set(indy)) > 1:
+        logger_bjs.info("process_group_raw_part(): Too many Y encodes in TR data group")
+
+    for item, iz, iy, it in zip(group, indz, indy, indt):
+        for i in range(block.ncha):
+            if group[0].idx.contrast == 0:
+                block.metab_raw_part[i][iz, iy, it, :] = item.data[i,:]
+            else:
+                block.water_raw_part[i][iz, iy, it, :] = item.data[i,:]
+    return
+
+
+def process_init_epsi_full(block, group, config, metadata):
     """ Format data into a [cha RO ave lin seg] array """
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -391,7 +493,7 @@ def process_init_epsi(block, group, config, metadata):
             for icha in range(block.ncha):
                 it = item.idx.segment % block.nt
                 block.ref[icha, it, :] = item.data[icha,:]
-                # TODO bjs - could use kz,ky,kx = 0 x nt FID as example of Metab data quality?
+                # NB. bjs, only using FULL ref data to init xino, xine, expo, expe
 
     # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
 
@@ -408,7 +510,44 @@ def process_init_epsi(block, group, config, metadata):
     block.ref_done = True
 
 
-def process_raw_to_epsi(block, group):
+def process_init_epsi_part(block, group, config, metadata):
+    """ Format data into a [cha RO ave lin seg] array """
+
+    indz = [item.idx.kspace_encode_step_2 for item in group]
+    indy = [item.idx.kspace_encode_step_1 for item in group]
+    indt = [item.idx.segment for item in group]
+
+    if len(set(indz)) > 1:
+        logger_bjs.info("Too many Z encodes in Init data group")
+    if len(set(indy)) > 1:
+        logger_bjs.info("Too many Y encodes in Init data group")
+    if len(set(indt)) != block.nt * 2:
+        logger_bjs.info("Length of segment encodes list not equal to Nt in Init data group")
+
+    for item in group:
+        if item.idx.contrast == 1:
+            for icha in range(block.ncha):
+                it = item.idx.segment % block.nt
+                block.ref_part[icha, it, :] = item.data[icha,:]
+                # NB. bjs, only using FULL ref data to init xino, xine, expo, expe
+                #  but will stor this here just in case I want to check
+
+    # # Ref acq should be in block.water/metab[:][0,0,:,:] arrays
+    #
+    # block.k_traj = inline_init_traj_corr(block)       # TODO bjs - do I need to save k_data
+    #
+    # xino, xine = inline_init_interp_kx(block)
+    # expo, expe = inline_init_process_kt(block, reverse=False)
+    #
+    # block.xino = xino
+    # block.xine = xine
+    # block.expo = expo
+    # block.expe = expe
+    #
+    # block.ref_done = True
+
+
+def process_raw_to_epsi_full(block, group):
     ''' group is one EPI readout of water OR metab '''
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -417,43 +556,76 @@ def process_raw_to_epsi(block, group):
     ieco = group[0].idx.contrast
 
     if len(set(indz)) > 1:
-        logger_bjs.info("Too many Z encodes in TR data group")
+        logger_bjs.info("process_raw_to_epsi_full(): Too many Z encodes in TR data group")
     if len(set(indy)) > 1:
-        logger_bjs.info("Too many Y encodes in TR data group")
+        logger_bjs.info("process_raw_to_epsi_full(): Too many Y encodes in TR data group")
     if len(set(indt)) != block.nt:
-        logger_bjs.info("Length of segment encodes list not equal to Nt in Init data group")
+        logger_bjs.info("process_raw_to_epsi_full(): Length of segment encodes list not equal to Nt in Init data group")
 
     for item in group:
         it = item.idx.segment % block.nt
         for icha in range(block.ncha):
             if item.idx.contrast == 0:
-                block.metab[icha, it, :] = item.data[icha,:]
+                block.metab_full[icha, it, :] = item.data[icha,:]
             else:
-                block.water[icha, it, :] = item.data[icha,:]
+                block.water_full[icha, it, :] = item.data[icha,:]
 
     if ieco == 0:
-        dat_out = inline_do_epsi(block, block.metab)
-        block.metab_epsi[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
+        dat_out = inline_do_epsi(block, block.metab_full)
+        block.metab_epsi_full[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
     else:
-        dat_out = inline_do_epsi(block, block.water)
-        block.water_epsi[indy, :, :, :] = dat_out
+        dat_out = inline_do_epsi(block, block.water_full)
+        block.water_epsi_full[indy, :, :, :] = dat_out
 
     return
 
 
-def send_raw(block, group, metadata, ser_num):
+def process_raw_to_epsi_part(block, group):
+    ''' group is one EPI readout of water OR metab '''
 
-    zindx = block.last_zindx   # TODO bjs - what range do we take?
+    indz = [item.idx.kspace_encode_step_2 for item in group]
+    indy = [item.idx.kspace_encode_step_1 for item in group]
+    indt = [item.idx.segment for item in group]
+    ieco = group[0].idx.contrast
+
+    if len(set(indz)) > 1:
+        logger_bjs.info("process_raw_to_epsi_part(): Too many Z encodes in TR data group")
+    if len(set(indy)) > 1:
+        logger_bjs.info("process_raw_to_epsi_part(): Too many Y encodes in TR data group")
+    if len(set(indt)) != block.nt:
+        logger_bjs.info("process_raw_to_epsi_part(): Length of segment encodes list not equal to Nt in Init data group")
+
+    for item in group:
+        it = item.idx.segment % block.nt
+        for icha in range(block.ncha):
+            if item.idx.contrast == 0:
+                block.metab_part[icha, it, :] = item.data[icha,:]
+            else:
+                block.water_part[icha, it, :] = item.data[icha,:]
+
+    if ieco == 0:
+        dat_out = inline_do_epsi(block, block.metab_part)
+        block.metab_epsi_part[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
+    else:
+        dat_out = inline_do_epsi(block, block.water_part)
+        block.water_epsi_part[indy, :, :, :] = dat_out
+
+    return
+
+
+def send_raw_full(block, group, metadata, ser_num):
+
+    zindx = block.last_zindx_full
     images = []
 
     posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
 
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
-    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB']
-    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_METAB'
-    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER']
-    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_WATER'
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-FULL']
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_METAB_FULL'
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-FULL']
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_WATER_FULL'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -465,8 +637,8 @@ def send_raw(block, group, metadata, ser_num):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab_raw[icha][zindx, :,:,:].copy()
-        water = block.water_raw[icha][zindx, :,:,:].copy()
+        metab = block.metab_raw_full[icha][zindx, :,:,:].copy()
+        water = block.water_raw_full[icha][zindx, :,:,:].copy()
 
         ms = metab.shape
         ws = water.shape
@@ -507,19 +679,19 @@ def send_raw(block, group, metadata, ser_num):
     return images
 
 
-def send_epsi(block, group, metadata, ser_num):
+def send_raw_part(block, group, metadata, ser_num):
 
-    zindx = block.last_zindx_epsi  # TODO bjs - what range do we take?
+    zindx = block.last_zindx_part
     images = []
 
     posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
 
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
-    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-METAB']
-    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_METAB'
-    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-WATER']
-    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_WATER'
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-PART']
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_METAB_PART'
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-PART']
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_WATER_PART'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -531,8 +703,140 @@ def send_epsi(block, group, metadata, ser_num):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab_epsi[:, icha, :, :].copy()
-        water = block.water_epsi[:, icha, :, :].copy()
+        metab = block.metab_raw_part[icha][zindx, :,:,:].copy()
+        water = block.water_raw_part[icha][zindx, :,:,:].copy()
+
+        ms = metab.shape
+        ws = water.shape
+        metab.shape = ms[0], ms[1], ms[2]
+        water.shape = ws[0], ws[1], ws[2]
+
+        # metab = np.conj(metab)
+        # water = np.conj(water)
+
+        tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
+        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
+
+        # Set the header information
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+
+        tmpImgWat.image_series_index = ser_num
+        tmpImgWat.image_series_index = ser_num
+
+        tmpImgMet.image_index = block.out_indx_raw + 0
+        tmpImgWat.image_index = block.out_indx_raw + 1
+
+        # 2D spectroscopic imaging
+        tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+
+        tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+
+        tmpImgMet.attribute_string = xml_metab
+        tmpImgWat.attribute_string = xml_water
+
+        images.append(tmpImgMet)
+        images.append(tmpImgWat)
+
+        block.out_indx_raw += 2
+
+    return images
+
+
+def send_epsi_full(block, group, metadata, ser_num):
+
+    zindx = block.last_zindx_epsi_full
+    images = []
+
+    posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
+
+    # Set ISMRMRD Meta Attributes
+    tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-METAB-FULL']
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_METAB_FULL'
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-WATER-FULL']
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_WATER_FULL'
+
+    xml_metab = tmpMetaMet.serialize()
+    xml_water = tmpMetaWat.serialize()
+    logging.debug("Image MetaAttributes: %s", xml_metab)
+
+    for icha in range(block.ncha):
+        # Create new MRD instance for the processed image
+        # from_array() should be called with 'transpose=False' to avoid warnings, and when called
+        # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
+        # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
+
+        metab = block.metab_epsi_full[:, icha, :, :].copy()
+        water = block.water_epsi_full[:, icha, :, :].copy()
+
+        metab = np.squeeze(metab)
+        water = np.squeeze(water)
+
+        ms = metab.shape
+        ws = water.shape
+        metab.shape = ms[0], ms[1], ms[2]
+        water.shape = ws[0], ws[1], ws[2]
+
+        tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
+        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
+
+        # Set the header information
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+
+        tmpImgMet.image_series_index = ser_num
+        tmpImgWat.image_series_index = ser_num
+
+        tmpImgMet.image_index = block.out_indx_epsi + 0
+        tmpImgWat.image_index = block.out_indx_epsi + 1
+
+        # 2D spectroscopic imaging
+        tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+
+        tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+
+        tmpImgMet.attribute_string = xml_metab
+        tmpImgWat.attribute_string = xml_water
+
+        images.append(tmpImgMet)
+        images.append(tmpImgWat)
+
+        block.out_indx_epsi += 2
+
+    return images
+
+
+def send_epsi_part(block, group, metadata, ser_num):
+
+    zindx = block.last_zindx_epsi_part
+    images = []
+
+    posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
+
+    # Set ISMRMRD Meta Attributes
+    tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-METAB-PART']
+    tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_METAB_PART'
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-WATER-PART']
+    tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_WATER_PART'
+
+    xml_metab = tmpMetaMet.serialize()
+    xml_water = tmpMetaWat.serialize()
+    logging.debug("Image MetaAttributes: %s", xml_metab)
+
+    for icha in range(block.ncha):
+        # Create new MRD instance for the processed image
+        # from_array() should be called with 'transpose=False' to avoid warnings, and when called
+        # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
+        # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
+
+        metab = block.metab_epsi_part[:, icha, :, :].copy()
+        water = block.water_epsi_part[:, icha, :, :].copy()
 
         metab = np.squeeze(metab)
         water = np.squeeze(water)
