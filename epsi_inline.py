@@ -126,8 +126,10 @@ class BlockEpsi:
         # data storage
 
         self.ref = None
-        self.water = None
-        self.metab = None
+        self.water_raw = None
+        self.metab_raw = None
+        self.water = None       # raw data for EPSI processing - need duplicate here in case 'both' processing done
+        self.metab = None       # raw data for EPSI processing - need duplicate here in case 'both' processing done
         self.water_epsi = None
         self.metab_epsi = None
 

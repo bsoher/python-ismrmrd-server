@@ -135,8 +135,12 @@ class BlockEpsi:
 
         self.ref_full = None
         self.ref_part = None
-        self.water_full = None
-        self.water_part = None
+        self.water_raw_full = []
+        self.water_raw_part = []
+        self.metab_raw_full = []
+        self.metab_raw_part = None
+        self.water_full = None      # raw data for EPSI processing - need duplicate here in case 'both' processing done
+        self.water_part = None      # ditto next three
         self.metab_full = None
         self.metab_part = None
         self.water_epsi_full = None
@@ -278,10 +282,14 @@ def process(connection, config, metadata):
                         block.ncha, block.nx = item.data.shape
                         dims = [block.nz, block.ny, block.nt, block.nx]
                         block.water_raw_full = []
+                        block.water_raw_part = []   # bjs, using list of arrays to minimize big memory chunks
+                        block.metab_raw_full = []
                         block.metab_raw_part = []
                         for i in range(block.ncha):
                             block.water_raw_full.append(np.zeros(dims, item.data.dtype))
+                            block.water_raw_part.append(np.zeros(dims, item.data.dtype))
                             block.metab_raw_full.append(np.zeros(dims, item.data.dtype))
+                            block.metab_raw_part.append(np.zeros(dims, item.data.dtype))
                         block.do_setup_raw = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
