@@ -12,7 +12,7 @@ from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inlin
 # bjs imports
 from logging import FileHandler, Formatter
 
-# BJS_DEBUG_PATH = "debug_fire"
+#BJS_DEBUG_PATH = "debug_fire"
 BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
@@ -391,10 +391,10 @@ def process(connection, config, metadata):
                                     connection.send_image(images)
                                     block.last_zindx_epsi_full += 1
                                     for i in range(block.ncha):
-                                        block.water_full[i] = block.water_full[i] * 0.0
-                                        block.metab_full[i] = block.metab_full[i] * 0.0
-                                        block.water_epsi_full[i] = block.water_epsi_full[i] * 0.0
-                                        block.metab_epsi_full[i] = block.metab_epsi_full[i] * 0.0
+                                        block.water_full = block.water_full * 0.0
+                                        block.metab_full = block.metab_full[i] * 0.0
+                                        block.water_epsi_full = block.water_epsi_full * 0.0
+                                        block.metab_epsi_full = block.metab_epsi_full * 0.0
                                 acq_group_epsi_full = []
 
                             else:
@@ -418,10 +418,10 @@ def process(connection, config, metadata):
                                     connection.send_image(images)
                                     block.last_zindx_epsi_part += 1
                                     for i in range(block.ncha):
-                                        block.water_part[i] = block.water_part[i] * 0.0
-                                        block.metab_part[i] = block.metab_part[i] * 0.0
-                                        block.water_epsi_part[i] = block.water_epsi_part[i] * 0.0
-                                        block.metab_epsi_part[i] = block.metab_epsi_part[i] * 0.0
+                                        block.water_part = block.water_part * 0.0
+                                        block.metab_part = block.metab_part * 0.0
+                                        block.water_epsi_part = block.water_epsi_part * 0.0
+                                        block.metab_epsi_part = block.metab_epsi_part * 0.0
                                 acq_group_epsi_part = []
                 else:
                     msg = "Inlne process method not recognized: %s", inline_method

@@ -12,7 +12,7 @@ from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inlin
 # bjs imports
 from logging import FileHandler, Formatter
 
-# BJS_DEBUG_PATH = "debug_fire"
+#BJS_DEBUG_PATH = "debug_fire"
 BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
