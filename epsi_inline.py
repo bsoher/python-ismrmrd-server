@@ -12,13 +12,13 @@ from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inlin
 # bjs imports
 from logging import FileHandler, Formatter
 
-#BJS_DEBUG_PATH = "debug_fire"
-BJS_DEBUG_PATH = "/tmp/share/debug"
+BJS_DEBUG_PATH = "debug_fire"
+#BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
 # Folder for debug output files
-debugFolder = "/tmp/share/debug"
-#debugFolder = "D:\\temp\\debug_fire"
+#debugFolder = "/tmp/share/debug"
+debugFolder = "D:\\tmp\\debug_fire"
 
 logger_bjs = logging.getLogger("bjs_log")
 logger_bjs.setLevel(logging.DEBUG)
@@ -329,11 +329,10 @@ def process(connection, config, metadata):
                                 images = send_epsi(block, acq_group_epsi, metadata, ser_num_epsi)
                                 connection.send_image(images)
                                 block.last_zindx_epsi += 1
-                                for i in range(block.ncha):
-                                    block.water[i] = block.water[i] * 0.0
-                                    block.metab[i] = block.metab[i] * 0.0
-                                    block.water_epsi[i] = block.water_epsi[i] * 0.0
-                                    block.metab_epsi[i] = block.metab_epsi[i] * 0.0
+                                block.water = block.water[i] * 0.0
+                                block.metab = block.metab[i] * 0.0
+                                block.water_epsi = block.water_epsi * 0.0
+                                block.metab_epsi = block.metab_epsi * 0.0
                             acq_group_epsi = []
                 else:
                     msg = "Inlne process method not recognized: %s", inline_method
