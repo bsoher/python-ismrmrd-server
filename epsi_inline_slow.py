@@ -12,13 +12,13 @@ from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inlin
 # bjs imports
 from logging import FileHandler, Formatter
 
-BJS_DEBUG_PATH = "debug_fire"
-#BJS_DEBUG_PATH = "/tmp/share/debug"
+#BJS_DEBUG_PATH = "debug_fire"
+BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
 # Folder for debug output files
-#debugFolder = "/tmp/share/debug"
-debugFolder = "D:\\tmp\\debug_fire"
+debugFolder = "/tmp/share/debug"
+#debugFolder = "D:\\tmp\\debug_fire"
 
 logger_bjs = logging.getLogger("bjs_log")
 logger_bjs.setLevel(logging.DEBUG)
@@ -250,6 +250,11 @@ def process(connection, config, metadata):
     ser_num_raw_part = 1
     ser_num_epsi_full = 2
     ser_num_epsi_part = 3
+
+    dgb_raw_full = []
+    dgb_raw_part = []
+    dgb_epsi_full = []
+    dgb_epsi_part = []
 
 
     try:
@@ -661,7 +666,7 @@ def send_raw_full(block, group, metadata, ser_num):
         tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
         tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
 
-        tmpImgWat.image_series_index = ser_num
+        tmpImgMet.image_series_index = ser_num
         tmpImgWat.image_series_index = ser_num
 
         tmpImgMet.image_index = block.out_indx_raw + 0
@@ -727,7 +732,7 @@ def send_raw_part(block, group, metadata, ser_num):
         tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
         tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
 
-        tmpImgWat.image_series_index = ser_num
+        tmpImgMet.image_series_index = ser_num
         tmpImgWat.image_series_index = ser_num
 
         tmpImgMet.image_index = block.out_indx_raw + 0

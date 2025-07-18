@@ -12,13 +12,13 @@ from epsi_inline_util import inline_init_traj_corr, inline_init_interp_kx, inlin
 # bjs imports
 from logging import FileHandler, Formatter
 
-BJS_DEBUG_PATH = "debug_fire"
-#BJS_DEBUG_PATH = "/tmp/share/debug"
+#BJS_DEBUG_PATH = "debug_fire"
+BJS_DEBUG_PATH = "/tmp/share/debug"
 LOG_FORMAT = ('%(asctime)s | %(levelname)s | %(message)s')
 
 # Folder for debug output files
-#debugFolder = "/tmp/share/debug"
-debugFolder = "D:\\tmp\\debug_fire"
+debugFolder = "/tmp/share/debug"
+#debugFolder = "D:\\tmp\\debug_fire"
 
 logger_bjs = logging.getLogger("bjs_log")
 logger_bjs.setLevel(logging.DEBUG)
@@ -329,8 +329,8 @@ def process(connection, config, metadata):
                                 images = send_epsi(block, acq_group_epsi, metadata, ser_num_epsi)
                                 connection.send_image(images)
                                 block.last_zindx_epsi += 1
-                                block.water = block.water[i] * 0.0
-                                block.metab = block.metab[i] * 0.0
+                                block.water = block.water * 0.0
+                                block.metab = block.metab * 0.0
                                 block.water_epsi = block.water_epsi * 0.0
                                 block.metab_epsi = block.metab_epsi * 0.0
                             acq_group_epsi = []
@@ -484,7 +484,7 @@ def send_raw(block, group, metadata, ser_num):
         tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
         tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
 
-        tmpImgWat.image_series_index = ser_num
+        tmpImgMet.image_series_index = ser_num
         tmpImgWat.image_series_index = ser_num
 
         tmpImgMet.image_index = block.out_indx_raw + 0
