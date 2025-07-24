@@ -468,7 +468,6 @@ def send_raw(block, group, metadata, ser_num):
 
         metab = block.metab_raw[icha][zindx, :,:,:].copy()
         water = block.water_raw[icha][zindx, :,:,:].copy()
-
         ms = metab.shape
         ws = water.shape
         metab.shape = ms[0], ms[1], ms[2]
@@ -478,26 +477,19 @@ def send_raw(block, group, metadata, ser_num):
         # water = np.conj(water)
 
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
-        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
-
-        # Set the header information
         tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
-        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
-
         tmpImgMet.image_series_index = ser_num
-        tmpImgWat.image_series_index = ser_num
-
         tmpImgMet.image_index = block.out_indx_raw + 0
-        tmpImgWat.image_index = block.out_indx_raw + 1
-
-        # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
-        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
-
         tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
-        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
-
         tmpImgMet.attribute_string = xml_metab
+
+        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+        tmpImgWat.image_series_index = ser_num
+        tmpImgWat.image_index = block.out_indx_raw + 1
+        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
         tmpImgWat.attribute_string = xml_water
 
         images.append(tmpImgMet)
@@ -533,37 +525,27 @@ def send_epsi(block, group, metadata, ser_num):
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
         metab = block.metab_epsi[:, icha, :, :].copy()
-        water = block.water_epsi[:, icha, :, :].copy()
-
         metab = np.squeeze(metab)
-        water = np.squeeze(water)
-
         ms = metab.shape
-        ws = water.shape
         metab.shape = ms[0], ms[1], ms[2]
-        water.shape = ws[0], ws[1], ws[2]
-
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
-        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
-
-        # Set the header information
         tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
-        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
-
         tmpImgMet.image_series_index = ser_num
-        tmpImgWat.image_series_index = ser_num
-
         tmpImgMet.image_index = block.out_indx_epsi + 0
-        tmpImgWat.image_index = block.out_indx_epsi + 1
-
-        # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
-        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
-
         tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
-        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
-
         tmpImgMet.attribute_string = xml_metab
+
+        water = block.water_epsi[:, icha, :, :].copy()
+        water = np.squeeze(water)
+        ws = water.shape
+        water.shape = ws[0], ws[1], ws[2]
+        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+        tmpImgWat.image_series_index = ser_num
+        tmpImgWat.image_index = block.out_indx_epsi + 1
+        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
         tmpImgWat.attribute_string = xml_water
 
         images.append(tmpImgMet)
