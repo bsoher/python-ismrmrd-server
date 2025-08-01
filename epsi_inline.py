@@ -222,12 +222,12 @@ def process(connection, config, metadata):
     # else:
     #     block.ice_select = 'raw'
 
-    inline_method = 'both'
+    inline_method = 'both' # 'test'
 
     ser_num_raw = 0
-    ser_num_epsi = 99
+    ser_num_epsi = 1
     if inline_method == 'both':
-        ser_num_epsi = 99
+        ser_num_epsi = 1
 
     try:
         for item in connection:
@@ -244,7 +244,20 @@ def process(connection, config, metadata):
             #   - user_int[1] > 0 (this is last ADC of the EPI acquisition)
             # - data collate for EPSI complete when both user_int[1] AND user_int[3] are non-zero
             # -------------------------------------------------------------------------------------
+
+            if item.scan_counter is not None:
+                if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
+                    bob = 12
+                    logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
+                if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
+                    logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
+
             if isinstance(item, ismrmrd.Acquisition):
+
+                if inline_method not in ['raw', 'epsi', 'both', 'test']:
+                    msg = "Inlne process method not recognized: %s", inline_method
+                    logging.error(msg)
+                    raise ValueError(msg)
 
                 flag_ctr_kspace = item.user_int[2] > 0
                 flag_last_epi = item.user_int[1] > 0
@@ -280,7 +293,6 @@ def process(connection, config, metadata):
                                     block.water_raw[i] = block.water_raw[i] * 0.0
                                     block.metab_raw[i] = block.metab_raw[i] * 0.0
                             acq_group_raw = []
-
 
                 if inline_method in ['epsi','both']:
                     if block.do_setup_epsi:
@@ -334,10 +346,6 @@ def process(connection, config, metadata):
                                 block.water_epsi = block.water_epsi * 0.0
                                 block.metab_epsi = block.metab_epsi * 0.0
                             acq_group_epsi = []
-                else:
-                    msg = "Inlne process method not recognized: %s", inline_method
-                    logging.error(msg)
-                    raise ValueError(msg)
 
             elif item is None:
                 break
