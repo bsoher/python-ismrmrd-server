@@ -222,7 +222,7 @@ def process(connection, config, metadata):
     # else:
     #     block.ice_select = 'raw'
 
-    inline_method = 'both' # 'test'
+    inline_method = 'raw' #'both' # 'test'
 
     ser_num_raw = 0
     ser_num_epsi = 1
@@ -245,12 +245,13 @@ def process(connection, config, metadata):
             # - data collate for EPSI complete when both user_int[1] AND user_int[3] are non-zero
             # -------------------------------------------------------------------------------------
 
-            if item.scan_counter is not None:
-                if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
-                    bob = 12
-                    logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
-                if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
-                    logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
+            if item is not None:
+                if item.scan_counter is not None:
+                    if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
+                        bob = 12
+                        logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
+                    if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
+                        logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
 
             if isinstance(item, ismrmrd.Acquisition):
 
