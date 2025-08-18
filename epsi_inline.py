@@ -1,3 +1,9 @@
+
+# Copyright (c) 2024-2025 Brian J Soher - All Rights Reserved
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are not permitted without explicit permission.
+
 import ismrmrd
 import os
 import logging
@@ -222,7 +228,7 @@ def process(connection, config, metadata):
     # else:
     #     block.ice_select = 'raw'
 
-    inline_method = 'raw' #'both' # 'test'
+    inline_method = 'both' #'raw' 'test'
 
     ser_num_raw = 0
     ser_num_epsi = 1

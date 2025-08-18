@@ -1,3 +1,9 @@
+
+# Copyright (c) 2024-2025 Brian J Soher - All Rights Reserved
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are not permitted without explicit permission.
+
 import ismrmrd
 import os
 import logging
@@ -143,10 +149,12 @@ class BlockEpsi:
         self.water_part = None      # ditto next three
         self.metab_full = None
         self.metab_part = None
+        self.blank_slice = None
         self.water_epsi_full = None
         self.water_epsi_part = None
         self.metab_epsi_full = None
         self.metab_epsi_part = None
+        self.blank_epsi_slice = None
 
     @property
     def n_channels(self):
@@ -295,6 +303,8 @@ def process(connection, config, metadata):
                             block.water_raw_part.append(np.zeros(dims, item.data.dtype))
                             block.metab_raw_full.append(np.zeros(dims, item.data.dtype))
                             block.metab_raw_part.append(np.zeros(dims, item.data.dtype))
+                        block.blank_slice = np.zeros(dims, item.data.dtype)
+
                         block.do_setup_raw = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
@@ -310,6 +320,18 @@ def process(connection, config, metadata):
                             if iset == 0:
                                 process_group_raw_full(block, acq_group_raw_full, config, metadata)
                                 if item.idx.contrast == 1 and flag_last_yencode:
+
+                                    if block.last_zindx_full < item.idx.kspace_encode_step_2:
+                                        while block.last_zindx_full < item.idx.kspace_encode_step_2:
+                                            # assume there was a blank slice that we've missed
+                                            images = send_raw_blank(block, acq_group_raw_full, metadata, ser_num_raw_full, block.last_zindx_full, flag_full=True)
+                                            connection.send_image(images)
+                                            block.last_zindx_full += 1
+
+                                    # BJS - check if the last_zindx_xxx is same as zindex in last item?
+                                    #       if not, then have to send a blank slice to out and bump the
+                                    #       last_zindx_xx until it is same, then continue.
+
                                     logger_bjs.info("**** bjs - send_raw_full() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
                                     images = send_raw_full(block, acq_group_raw_full, metadata, ser_num_raw_full)
                                     connection.send_image(images)
@@ -321,6 +343,18 @@ def process(connection, config, metadata):
                             else:
                                 process_group_raw_part(block, acq_group_raw_part, config, metadata)
                                 if item.idx.contrast == 1 and flag_last_yencode:
+
+                                    if block.last_zindx_part < item.idx.kspace_encode_step_2:
+                                        while block.last_zindx_part < item.idx.kspace_encode_step_2:
+                                            # assume there was a blank slice that we've missed
+                                            images = send_raw_blank(block, acq_group_raw_part, metadata, ser_num_raw_part, block.last_zindx_part, flag_full=False)
+                                            connection.send_image(images)
+                                            block.last_zindx_part += 1
+
+                                    # BJS - check if the last_zindx_xxx is same as zindex in last item?
+                                    #       if not, then have to send a blank slice to out and bump the
+                                    #       last_zindx_xx until it is same, then continue.
+
                                     logger_bjs.info("**** bjs - send_raw_part() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
                                     images = send_raw_part(block, acq_group_raw_part, metadata, ser_num_raw_part)
                                     connection.send_image(images)
@@ -348,6 +382,7 @@ def process(connection, config, metadata):
                         block.water_epsi_part = np.zeros(dims_epsi, item.data.dtype)
                         block.metab_epsi_full = np.zeros(dims_epsi, item.data.dtype)
                         block.metab_epsi_part = np.zeros(dims_epsi, item.data.dtype)
+                        block.blank_epsi_slice = np.zeros(dims_epsi, item.data.dtype)
                         block.do_setup_epsi = False
                         block.ref_done = False
                         block.sampling_interval = item.sample_time_us * 1e-6
@@ -377,6 +412,18 @@ def process(connection, config, metadata):
                             if iset == 0:
                                 process_raw_to_epsi_full(block, acq_group_epsi_full)
                                 if item.idx.contrast == 1 and flag_last_yencode:
+
+                                    if block.last_zindx_epsi_full < item.idx.kspace_encode_step_2:
+                                        while block.last_zindx_epsi_full < item.idx.kspace_encode_step_2:
+                                            # assume there was a blank slice that we've missed
+                                            images = send_epsi_blank(block, acq_group_epsi_full, metadata, ser_num_epsi_full, block.last_zindx_epsi_full, flag_full=True)
+                                            connection.send_image(images)
+                                            block.last_zindx_epsi_full += 1
+
+                                    # BJS - check if the last_zindx_xxx is same as zindex in last item?
+                                    #       if not, then have to send a blank slice to out and bump the
+                                    #       last_zindx_xx until it is same, then continue.
+
                                     logger_bjs.info("**** bjs - send_epsi_full() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
 
                                     if block.swap_lr:
@@ -404,6 +451,18 @@ def process(connection, config, metadata):
                             else:
                                 process_raw_to_epsi_part(block, acq_group_epsi_part)
                                 if item.idx.contrast == 1 and flag_last_yencode:
+
+                                    if block.last_zindx_epsi_part < item.idx.kspace_encode_step_2:
+                                        while block.last_zindx_epsi_part < item.idx.kspace_encode_step_2:
+                                            # assume there was a blank slice that we've missed
+                                            images = send_epsi_blank(block, acq_group_epsi_part, metadata, ser_num_epsi_part, block.last_zindx_epsi_part, flag_full=False)
+                                            connection.send_image(images)
+                                            block.last_zindx_epsi_part += 1
+
+                                    # BJS - check if the last_zindx_xxx is same as zindex in last item?
+                                    #       if not, then have to send a blank slice to out and bump the
+                                    #       last_zindx_xx until it is same, then continue.
+
                                     logger_bjs.info("**** bjs - send_epsi_part() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
 
                                     if block.swap_lr:
@@ -426,10 +485,6 @@ def process(connection, config, metadata):
                                     block.water_epsi_part = block.water_epsi_part * 0.0
                                     block.metab_epsi_part = block.metab_epsi_part * 0.0
                                 acq_group_epsi_part = []
-                else:
-                    msg = "Inlne process method not recognized: %s", inline_method
-                    logging.error(msg)
-                    raise ValueError(msg)
 
             elif item is None:
                 break
@@ -622,6 +677,157 @@ def process_raw_to_epsi_part(block, group):
         block.water_epsi_part[indy, :, :, :] = dat_out
 
     return
+
+
+def send_raw_blank(block, group, metadata, ser_num, zindx, flag_full=False):
+
+    #zindx = block.last_zindx_full
+    images = []
+
+    posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
+
+    # Set ISMRMRD Meta Attributes
+    tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
+    if flag_full:
+        tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-FULL']
+        tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_METAB_FULL'
+        tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-FULL']
+        tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_RAW_WATER_FULL'
+    else:
+        tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-PART']
+        tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName) + '_FIRE_RAW_METAB_PART'
+        tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-PART']
+        tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName) + '_FIRE_RAW_WATER_PART'
+
+    xml_metab = tmpMetaMet.serialize()
+    xml_water = tmpMetaWat.serialize()
+    logging.debug("Image MetaAttributes: %s", xml_metab)
+
+    for icha in range(block.ncha):
+        # Create new MRD instance for the processed image
+        # from_array() should be called with 'transpose=False' to avoid warnings, and when called
+        # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
+        # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
+
+        #metab = block.metab_raw_full[icha][zindx, :,:,:].copy()
+        #water = block.water_raw_full[icha][zindx, :,:,:].copy()
+
+        metab = block.blank_slice[zindx, :,:,:].copy()  # every channel the same
+        water = block.blank_slice[zindx, :,:,:].copy()
+
+        ms = metab.shape
+        ws = water.shape
+        metab.shape = ms[0], ms[1], ms[2]
+        water.shape = ws[0], ws[1], ws[2]
+
+        # metab = np.conj(metab)
+        # water = np.conj(water)
+
+        tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
+        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
+
+        # Set the header information
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+
+        tmpImgMet.image_series_index = ser_num
+        tmpImgWat.image_series_index = ser_num
+
+        tmpImgMet.image_index = block.out_indx_raw + 0
+        tmpImgWat.image_index = block.out_indx_raw + 1
+
+        # 2D spectroscopic imaging
+        tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+
+        tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+
+        tmpImgMet.attribute_string = xml_metab
+        tmpImgWat.attribute_string = xml_water
+
+        images.append(tmpImgMet)
+        images.append(tmpImgWat)
+
+        block.out_indx_raw += 2
+
+    return images
+
+
+def send_epsi_blank(block, group, metadata, ser_num, zindx, flag_full=False):
+
+    #zindx = block.last_zindx_epsi_full
+    images = []
+
+    posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
+
+    # Set ISMRMRD Meta Attributes
+    tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
+
+    if flag_full:
+        tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-METAB-FULL']
+        tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_METAB_FULL'
+        tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'EPSI-WATER-FULL']
+        tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName)+'_FIRE_EPSI_WATER_FULL'
+    else:
+        tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-PART']
+        tmpMetaMet['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName) + '_FIRE_RAW_METAB_PART'
+        tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-PART']
+        tmpMetaWat['SiemensDicom_SequenceDescription'] = str(metadata.measurementInformation.protocolName) + '_FIRE_RAW_WATER_PART'
+
+    xml_metab = tmpMetaMet.serialize()
+    xml_water = tmpMetaWat.serialize()
+    logging.debug("Image MetaAttributes: %s", xml_metab)
+
+    for icha in range(block.ncha):
+        # Create new MRD instance for the processed image
+        # from_array() should be called with 'transpose=False' to avoid warnings, and when called
+        # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
+        # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
+
+        #metab = block.metab_epsi_full[:, icha, :, :].copy()
+        #water = block.water_epsi_full[:, icha, :, :].copy()
+
+        metab = block.blank_epsi_slice[:, icha, :, :].copy()
+        water = block.blank_epsi_slice[:, icha, :, :].copy()
+
+        metab = np.squeeze(metab)
+        water = np.squeeze(water)
+
+        ms = metab.shape
+        ws = water.shape
+        metab.shape = ms[0], ms[1], ms[2]
+        water.shape = ws[0], ws[1], ws[2]
+
+        tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
+        tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
+
+        # Set the header information
+        tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
+        tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
+
+        tmpImgMet.image_series_index = ser_num
+        tmpImgWat.image_series_index = ser_num
+
+        tmpImgMet.image_index = block.out_indx_epsi + 0
+        tmpImgWat.image_index = block.out_indx_epsi + 1
+
+        # 2D spectroscopic imaging
+        tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+        tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
+
+        tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+        tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
+
+        tmpImgMet.attribute_string = xml_metab
+        tmpImgWat.attribute_string = xml_water
+
+        images.append(tmpImgMet)
+        images.append(tmpImgWat)
+
+        block.out_indx_epsi += 2
+
+    return images
 
 
 def send_raw_full(block, group, metadata, ser_num):

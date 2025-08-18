@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2014-2025 Brian J Soher - All Rights Reserved
+# Copyright (c) 2024-2025 Brian J Soher - All Rights Reserved
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are not permitted without explicit permission.
