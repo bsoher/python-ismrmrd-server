@@ -264,7 +264,6 @@ def process(connection, config, metadata):
     dgb_epsi_full = []
     dgb_epsi_part = []
 
-
     try:
         for item in connection:
             # -------------------------------------------------------------------------------------
@@ -281,6 +280,11 @@ def process(connection, config, metadata):
             # - data collate for EPSI complete when both user_int[1] AND user_int[3] are non-zero
             # -------------------------------------------------------------------------------------
             if isinstance(item, ismrmrd.Acquisition):
+
+                if inline_method not in ['raw', 'epsi', 'both', 'test']:
+                    msg = "Inlne process method not recognized: %s", inline_method
+                    logging.error(msg)
+                    raise ValueError(msg)
 
                 flag_ctr_kspace = item.user_int[2] > 0
                 flag_last_epi = item.user_int[1] > 0

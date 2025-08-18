@@ -251,13 +251,13 @@ def process(connection, config, metadata):
             # - data collate for EPSI complete when both user_int[1] AND user_int[3] are non-zero
             # -------------------------------------------------------------------------------------
 
-            if item is not None:
-                if item.scan_counter is not None:
-                    if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
-                        bob = 12
-                        logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
-                    if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
-                        logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
+#            if item is not None:
+#                if item.scan_counter is not None:
+#                    if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
+#                        bob = 12
+#                        logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
+#                    if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
+#                        logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
 
             if isinstance(item, ismrmrd.Acquisition):
 
@@ -292,6 +292,11 @@ def process(connection, config, metadata):
                         if flag_last_epi:
                             process_group_raw(block, acq_group_raw, config, metadata)
                             if item.idx.contrast == 1 and flag_last_yencode:
+
+                                # BJS - check if the last_zindx is same as zindex in last item?
+                                #       if not, then have to send a blank slice to out and bump the
+                                #       last_zindx until it is same, then continue.
+
                                 logger_bjs.info("**** bjs - send_raw() -- zindx = %d, yindx = %d " % (zindx, yindx))
                                 images = send_raw(block, acq_group_raw, metadata, ser_num_raw)
                                 connection.send_image(images)
@@ -331,6 +336,11 @@ def process(connection, config, metadata):
                         if flag_last_epi:
                             process_raw_to_epsi(block, acq_group_epsi)
                             if item.idx.contrast == 1 and flag_last_yencode:
+
+                                # BJS - check if the last_zindx_epsi is same as zindex in last item?
+                                #       if not, then have to send a blank slice to out and bump the
+                                #       last_zindx_epsi until it is same, then continue.
+
                                 logger_bjs.info("**** bjs - send_epsi() -- zindx = %d, yindx = %d " % (zindx, yindx))
 
                                 if block.swap_lr:
