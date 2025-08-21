@@ -482,7 +482,7 @@ def send_raw(block, group, metadata, ser_num):
     tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_WATER'
 
     xml_metab = tmpMetaMet.serialize()
-    xml_water = tmpMetaWat.serialize()
+    xml_water = tmpMetaWat.serialize() 
     logging.debug("Image MetaAttributes: %s", xml_metab)
 
     for icha in range(block.ncha):
