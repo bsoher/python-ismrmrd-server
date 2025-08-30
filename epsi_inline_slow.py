@@ -694,14 +694,14 @@ def send_raw_blank(block, group, metadata, ser_num, zindx, flag_full=False):
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
     if flag_full:
         tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-FULL']
-        tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_METAB_FULL'
+        tmpMetaMet['SequenceDescriptionAdditional'] = 'RAW_FULL'
         tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-FULL']
-        tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_WATER_FULL'
+        tmpMetaWat['SequenceDescriptionAdditional'] = 'RAW_FULL'
     else:
         tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-PART']
-        tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_METAB_PART'
+        tmpMetaMet['SequenceDescriptionAdditional'] = 'RAW_PART'
         tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-PART']
-        tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_WATER_PART'
+        tmpMetaWat['SequenceDescriptionAdditional'] = 'RAW_PART'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -770,14 +770,14 @@ def send_epsi_blank(block, group, metadata, ser_num, zindx, flag_full=False):
 
     if flag_full:
         tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-METAB-FULL']
-        tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_METAB_FULL'
+        tmpMetaMet['SequenceDescriptionAdditional'] = 'GRID_FULL'
         tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-WATER-FULL']
-        tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_WATER_FULL'
+        tmpMetaWat['SequenceDescriptionAdditional'] = 'GRID_FULL'
     else:
         tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-METAB-PART']
-        tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_METAB_PART'
+        tmpMetaMet['SequenceDescriptionAdditional'] = 'GRID_PART'
         tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-WATER-PART']
-        tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_WATER_PART'
+        tmpMetaWat['SequenceDescriptionAdditional'] = 'GRID_PART'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -844,9 +844,9 @@ def send_raw_full(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
     tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-FULL']
-    tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_METAB_FULL'
+    tmpMetaMet['SequenceDescriptionAdditional'] = 'RAW_FULL'
     tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-FULL']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_WATER_FULL'
+    tmpMetaWat['SequenceDescriptionAdditional'] = 'RAW_FULL'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -910,9 +910,9 @@ def send_raw_part(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
     tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB-PART']
-    tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_METAB_PART'
+    tmpMetaMet['SequenceDescriptionAdditional'] = 'RAW_PART'
     tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER-PART']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_WATER_PART'
+    tmpMetaWat['SequenceDescriptionAdditional'] = 'RAW_PART'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -976,9 +976,9 @@ def send_epsi_full(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
     tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-METAB-FULL']
-    tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_METAB_FULL'
+    tmpMetaMet['SequenceDescriptionAdditional'] = 'GRID_FULL'
     tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-WATER-FULL']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_WATER_FULL'
+    tmpMetaWat['SequenceDescriptionAdditional'] = 'GRID_FULL'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -1042,9 +1042,9 @@ def send_epsi_part(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
     tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-METAB-PART']
-    tmpMetaMet['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_METAB_PART'
+    tmpMetaMet['SequenceDescriptionAdditional'] = 'GRID_PART'
     tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-WATER-PART']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_WATER_PART'
+    tmpMetaWat['SequenceDescriptionAdditional'] = 'GRID_PART'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()

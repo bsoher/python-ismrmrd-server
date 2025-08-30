@@ -90,7 +90,7 @@ class BlockEpsi:
 
         # dynamically set
         self.do_setup_raw       = True      # setup arrays first off
-        self.do_setup_epsi      = True      # setup arrays first off
+        self.do_setup_grid      = True      # setup arrays first off
 
         self.fovx               = 280.0
         self.fovy               = 280.0
@@ -113,7 +113,7 @@ class BlockEpsi:
         self.mrdata             = None
         self.out_filename       = ''
         self.out_indx_raw       = 1     # DICOM slice number indexed from 1
-        self.out_indx_epsi      = 1     # DICOM slice number indexed from 1
+        self.out_indx_grid      = 1     # DICOM slice number indexed from 1
         self.save_output        = True
         self.channel            = ''
         self.csa_pad_length     = 0
@@ -124,7 +124,7 @@ class BlockEpsi:
         self.echo_phases        = None
         self.Is_GE              = False
         self.last_zindx         = 0
-        self.last_zindx_epsi    = 0
+        self.last_zindx_grid    = 0
 
         self.curr_yindx = 0
         self.curr_zindx = 0
@@ -136,8 +136,8 @@ class BlockEpsi:
         self.metab_raw = None
         self.water = None       # raw data for EPSI processing - need duplicate here in case 'both' processing done
         self.metab = None       # raw data for EPSI processing - need duplicate here in case 'both' processing done
-        self.water_epsi = None
-        self.metab_epsi = None
+        self.water_grid = None
+        self.metab_grid = None
 
     @property
     def n_channels(self):
@@ -208,32 +208,40 @@ def process(connection, config, metadata):
         block.fovz = metadata.encoding[0].reconSpace.fieldOfView_mm.z
         block.ncha = metadata.acquisitionSystemInformation.receiverChannels
         block.ice_select = mrdhelper.get_userParameterLong_value(metadata, 'EpsiWip_IceSelect')
+        block.fire_select = mrdhelper.get_userParameterLong_value(metadata, 'EpsiWip_FireSelect')
+
+        logger_bjs.info("**** bjs_logger_bjs - IceSelect = %d, FireSelect = %d " % (block.ice_select, block.fire_select))
+        logging.info("**** bjs_logging - IceSelect = %d, FireSelect = %d " % (block.ice_select, block.fire_select))
+
     except:
         logging.info("Improperly formatted metadata or auxiliary variables: \n%s", metadata)
 
     # Continuously parse incoming data parsed from MRD messages
     acq_group_raw = []
-    acq_group_epsi = []
+    acq_group_grid = []
     ref_group = []
 
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI.py run")
 
-    # if block.ice_select in [0,4]:
-    #     inline_method = 'epsi'
-    # elif block.ice_select in [0,3]:
-    #     inline_method = 'raw'
-    # elif block.ice_select == 2:
-    #     inline_method = 'both'
-    # else:
-    #     block.ice_select = 'raw'
+    logger_bjs.info(" bbb got here - inline_method = raw def")
+    inline_method = 'raw'
+    if block.fire_select == 1:
+        logger_bjs.info(" bbb got here - inline_method = raw")
+        inline_method = 'raw'
+    elif block.fire_select == 2:
+        logger_bjs.info(" bbb got here - inline_method = grid")
+        inline_method = 'grid'
+    elif block.fire_select == 3:
+        logger_bjs.info(" bbb got here - inline_method = both")
+        inline_method = 'both'
 
-    inline_method = 'both' #'raw' 'test'
+    #inline_method = 'both'
 
     ser_num_raw = 0
-    ser_num_epsi = 1
+    ser_num_grid = 1
     if inline_method == 'both':
-        ser_num_epsi = 1
+        ser_num_grid = 1
 
     try:
         for item in connection:
@@ -251,17 +259,17 @@ def process(connection, config, metadata):
             # - data collate for EPSI complete when both user_int[1] AND user_int[3] are non-zero
             # -------------------------------------------------------------------------------------
 
-#            if item is not None:
-#                if item.scan_counter is not None:
-#                    if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
-#                        bob = 12
-#                        logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
-#                    if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
-#                        logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
+            # if item is not None:
+            #     if item.scan_counter is not None:
+            #         if item.scan_counter in [1025, 1026, 2050, 2051, 3075, 3076, 8200]:
+            #             bob = 12
+            #             logger_bjs.info("**** bjs - dummy test of RTFEEDBACK scan_counter = %d and in [1025,1026, 2050,2051, etc] " % (item.scan_counter,))
+            #         if item.is_flag_set(ismrmrd.ACQ_IS_RTFEEDBACK_DATA):
+            #             logger_bjs.info("**** bjs - is_flag_set() = ACQ_IS_RTFEEDBACK_DATA -- scan_counter = %d " % (item.scan_counter,))
 
             if isinstance(item, ismrmrd.Acquisition):
 
-                if inline_method not in ['raw', 'epsi', 'both', 'test']:
+                if inline_method not in ['raw', 'grid', 'both', 'test']:
                     msg = "Inlne process method not recognized: %s", inline_method
                     logging.error(msg)
                     raise ValueError(msg)
@@ -306,19 +314,19 @@ def process(connection, config, metadata):
                                     block.metab_raw[i] = block.metab_raw[i] * 0.0
                             acq_group_raw = []
 
-                if inline_method in ['epsi','both']:
-                    if block.do_setup_epsi:
+                if inline_method in ['grid','both']:
+                    if block.do_setup_grid:
                         block.ncha, block.nx = item.data.shape
                         block.nx2 = int(block.nx // 2)
                         block.nt2 = int(block.nt // 2)
                         dims = [block.ncha, block.nt, block.nx]
-                        dims_epsi = [block.ny, block.ncha, block.nx2, block.nt2]
+                        dims_grid = [block.ny, block.ncha, block.nx2, block.nt2]
                         block.ref = np.zeros(dims, item.data.dtype)
                         block.water = np.zeros(dims, item.data.dtype)
                         block.metab = np.zeros(dims, item.data.dtype)
-                        block.water_epsi = np.zeros(dims_epsi, item.data.dtype)
-                        block.metab_epsi = np.zeros(dims_epsi, item.data.dtype)
-                        block.do_setup_epsi = False
+                        block.water_grid = np.zeros(dims_grid, item.data.dtype)
+                        block.metab_grid = np.zeros(dims_grid, item.data.dtype)
+                        block.do_setup_grid = False
                         block.ref_done = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
@@ -328,41 +336,41 @@ def process(connection, config, metadata):
                     if flag_ctr_kspace:             # Center of kspace data
                         ref_group.append(item)
                         if item.idx.contrast == 1 and flag_last_epi:
-                            process_init_epsi(block, ref_group, config, metadata)
+                            process_init_grid(block, ref_group, config, metadata)
                             ref_group = []
                             block_ref_done = True
                     else:                           # Regular kspace acquisition
-                        acq_group_epsi.append(item)
+                        acq_group_grid.append(item)
                         if flag_last_epi:
-                            process_raw_to_epsi(block, acq_group_epsi)
+                            process_raw_to_grid(block, acq_group_grid)
                             if item.idx.contrast == 1 and flag_last_yencode:
 
-                                # BJS - check if the last_zindx_epsi is same as zindex in last item?
+                                # BJS - check if the last_zindx_grid is same as zindex in last item?
                                 #       if not, then have to send a blank slice to out and bump the
-                                #       last_zindx_epsi until it is same, then continue.
+                                #       last_zindx_grid until it is same, then continue.
 
-                                logger_bjs.info("**** bjs - send_epsi() -- zindx = %d, yindx = %d " % (zindx, yindx))
+                                logger_bjs.info("**** bjs - send_grid() -- zindx = %d, yindx = %d " % (zindx, yindx))
 
                                 if block.swap_lr:
                                     for ichan in range(block.ncha):
                                         for x in range(int(block.nx / 2)):
                                             for t in range(int(block.nt / 2)):
-                                                tmp = np.fliplr(np.squeeze(block.water_epsi[:, ichan, x, t]))
+                                                tmp = np.fliplr(np.squeeze(block.water_grid[:, ichan, x, t]))
                                                 tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                block.water_epsi[:, ichan, x, t] = tmp
+                                                block.water_grid[:, ichan, x, t] = tmp
 
-                                                tmp = np.fliplr(np.squeeze(block.metab_epsi[:, ichan, x, t]))
+                                                tmp = np.fliplr(np.squeeze(block.metab_grid[:, ichan, x, t]))
                                                 tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                block.metab_epsi[:, ichan, x, t] = tmp
+                                                block.metab_grid[:, ichan, x, t] = tmp
 
-                                images = send_epsi(block, acq_group_epsi, metadata, ser_num_epsi)
+                                images = send_grid(block, acq_group_grid, metadata, ser_num_grid)
                                 connection.send_image(images)
-                                block.last_zindx_epsi += 1
+                                block.last_zindx_grid += 1
                                 block.water = block.water * 0.0
                                 block.metab = block.metab * 0.0
-                                block.water_epsi = block.water_epsi * 0.0
-                                block.metab_epsi = block.metab_epsi * 0.0
-                            acq_group_epsi = []
+                                block.water_grid = block.water_grid * 0.0
+                                block.metab_grid = block.metab_grid * 0.0
+                            acq_group_grid = []
 
             elif item is None:
                 break
@@ -398,7 +406,7 @@ def process_group_raw(block, group, config, metadata):
     return
 
 
-def process_init_epsi(block, group, config, metadata):
+def process_init_grid(block, group, config, metadata):
     """ Format data into a [cha RO ave lin seg] array """
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -434,7 +442,7 @@ def process_init_epsi(block, group, config, metadata):
     block.ref_done = True
 
 
-def process_raw_to_epsi(block, group):
+def process_raw_to_grid(block, group):
     ''' group is one EPI readout of water OR metab '''
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -459,10 +467,10 @@ def process_raw_to_epsi(block, group):
 
     if ieco == 0:
         dat_out = inline_do_epsi(block, block.metab)
-        block.metab_epsi[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
+        block.metab_grid[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
     else:
         dat_out = inline_do_epsi(block, block.water)
-        block.water_epsi[indy, :, :, :] = dat_out
+        block.water_grid[indy, :, :, :] = dat_out
 
     return
 
@@ -477,12 +485,12 @@ def send_raw(block, group, metadata, ser_num):
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
     tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-METAB']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_METAB'
+    tmpMetaMet['SequenceDescriptionAdditional'] = 'RAW'
     tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'RAW-WATER']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_RAW_WATER'
+    tmpMetaWat['SequenceDescriptionAdditional'] = 'RAW'
 
     xml_metab = tmpMetaMet.serialize()
-    xml_water = tmpMetaWat.serialize() 
+    xml_water = tmpMetaWat.serialize()
     logging.debug("Image MetaAttributes: %s", xml_metab)
 
     for icha in range(block.ncha):
@@ -525,19 +533,19 @@ def send_raw(block, group, metadata, ser_num):
     return images
 
 
-def send_epsi(block, group, metadata, ser_num):
+def send_grid(block, group, metadata, ser_num):
 
-    zindx = block.last_zindx_epsi  # TODO bjs - what range do we take?
+    zindx = block.last_zindx_grid  # TODO bjs - what range do we take?
     images = []
 
     posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
 
     # Set ISMRMRD Meta Attributes
     tmpMetaMet, tmpMetaWat = default_meta(block, zindx, metadata)
-    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'REGRID-METAB']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_METAB'
-    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'REGRID-WATER']
-    tmpMetaWat['SiemensDicom_SequenceDescriptionAdditional'] = '_GRID_WATER'
+    tmpMetaMet['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-METAB']
+    tmpMetaMet['SequenceDescriptionAdditional'] = 'GRID'
+    tmpMetaWat['ImageProcessingHistory'] = ['FIRE', 'SPECTRO', 'PYTHON', 'PYMIDAS', 'GRID-WATER']
+    tmpMetaWat['SequenceDescriptionAdditional'] = 'GRID'
 
     xml_metab = tmpMetaMet.serialize()
     xml_water = tmpMetaWat.serialize()
@@ -549,26 +557,26 @@ def send_epsi(block, group, metadata, ser_num):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab_epsi[:, icha, :, :].copy()
+        metab = block.metab_grid[:, icha, :, :].copy()
         metab = np.squeeze(metab)
         ms = metab.shape
         metab.shape = ms[0], ms[1], ms[2]
         tmpImgMet = ismrmrd.Image.from_array(metab, transpose=False)
         tmpImgMet.setHead(mrdhelper.update_img_header_from_raw(tmpImgMet.getHead(), group[0].getHead()))
         tmpImgMet.image_series_index = ser_num
-        tmpImgMet.image_index = block.out_indx_epsi + 0
+        tmpImgMet.image_index = block.out_indx_grid + 0
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
         tmpImgMet.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
         tmpImgMet.attribute_string = xml_metab
 
-        water = block.water_epsi[:, icha, :, :].copy()
+        water = block.water_grid[:, icha, :, :].copy()
         water = np.squeeze(water)
         ws = water.shape
         water.shape = ws[0], ws[1], ws[2]
         tmpImgWat = ismrmrd.Image.from_array(water, transpose=False)
         tmpImgWat.setHead(mrdhelper.update_img_header_from_raw(tmpImgWat.getHead(), group[0].getHead()))
         tmpImgWat.image_series_index = ser_num
-        tmpImgWat.image_index = block.out_indx_epsi + 1
+        tmpImgWat.image_index = block.out_indx_grid + 1
         tmpImgWat.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
         tmpImgWat.position = (ctypes.c_float(posvecx), ctypes.c_float(posvecy), ctypes.c_float(posvecz))
         tmpImgWat.attribute_string = xml_water
@@ -576,7 +584,7 @@ def send_epsi(block, group, metadata, ser_num):
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
-        block.out_indx_epsi += 2
+        block.out_indx_grid += 2
 
     return images
 
