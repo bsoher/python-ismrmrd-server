@@ -90,7 +90,7 @@ class BlockEpsi:
 
         # dynamically set
         self.do_setup_raw       = True      # setup arrays first off
-        self.do_setup_epsi      = True      # setup arrays first off
+        self.do_setup_grid      = True      # setup arrays first off
 
         self.fovx               = 280.0
         self.fovy               = 280.0
@@ -113,7 +113,7 @@ class BlockEpsi:
         self.mrdata             = None
         self.out_filename       = ''
         self.out_indx_raw       = 1     # DICOM slice number indexed from 1
-        self.out_indx_epsi      = 1     # DICOM slice number indexed from 1
+        self.out_indx_grid      = 1     # DICOM slice number indexed from 1
         self.save_output        = True
         self.channel            = ''
         self.csa_pad_length     = 0
@@ -125,8 +125,8 @@ class BlockEpsi:
         self.Is_GE              = False
         self.last_zindx_full         = 0
         self.last_zindx_part         = 0
-        self.last_zindx_epsi_full    = 0
-        self.last_zindx_epsi_part    = 0
+        self.last_zindx_grid_full    = 0
+        self.last_zindx_grid_part    = 0
 
         self.curr_yindx = 0
         self.curr_zindx = 0
@@ -136,8 +136,8 @@ class BlockEpsi:
         self.ref = None
         self.water = None
         self.metab = None
-        self.water_epsi = None
-        self.metab_epsi = None
+        self.water_grid = None
+        self.metab_grid = None
 
         self.ref_full = None
         self.ref_part = None
@@ -150,11 +150,11 @@ class BlockEpsi:
         self.metab_full = None
         self.metab_part = None
         self.blank_slice = None
-        self.water_epsi_full = None
-        self.water_epsi_part = None
-        self.metab_epsi_full = None
-        self.metab_epsi_part = None
-        self.blank_epsi_slice = None
+        self.water_grid_full = None
+        self.water_grid_part = None
+        self.metab_grid_full = None
+        self.metab_grid_part = None
+        self.blank_grid_slice = None
 
     @property
     def n_channels(self):
@@ -225,44 +225,48 @@ def process(connection, config, metadata):
         block.fovz = metadata.encoding[0].reconSpace.fieldOfView_mm.z
         block.ncha = metadata.acquisitionSystemInformation.receiverChannels
         block.ice_select = mrdhelper.get_userParameterLong_value(metadata, 'EpsiWip_IceSelect')
+        block.fire_select = mrdhelper.get_userParameterLong_value(metadata, 'EpsiWip_FireSelect')
     except:
         logging.info("Improperly formatted metadata or auxiliary variables: \n%s", metadata)
 
     # Continuously parse incoming data parsed from MRD messages
     acq_group_raw = []
-    acq_group_epsi = []
+    acq_group_grid = []
     ref_group = []
 
     acq_group_raw_full = []
     acq_group_raw_part = []
-    acq_group_epsi_full = []
-    acq_group_epsi_part = []
+    acq_group_grid_full = []
+    acq_group_grid_part = []
     ref_group_full = []
     ref_group_part = []
 
     logger_bjs.info("----------------------------------------------------------------------------------------")
     logger_bjs.info("Start EPSI_SLOW.py run")
 
-    # if block.ice_select in [0,4]:
-    #     inline_method = 'epsi'
-    # elif block.ice_select in [0,3]:
-    #     inline_method = 'raw'
-    # elif block.ice_select == 2:
-    #     inline_method = 'both'
-    # else:
-    #     block.ice_select = 'raw'
+    logger_bjs.info(" bbb got here - inline_method = raw def")
+    inline_method = 'raw'
+    if block.fire_select == 1:
+        logger_bjs.info(" bbb got here - inline_method = raw")
+        inline_method = 'raw'
+    elif block.fire_select == 2:
+        logger_bjs.info(" bbb got here - inline_method = grid")
+        inline_method = 'grid'
+    elif block.fire_select == 3:
+        logger_bjs.info(" bbb got here - inline_method = both")
+        inline_method = 'both'
 
-    inline_method = 'both'
+    # inline_method = 'both'
 
     ser_num_raw_full = 0
     ser_num_raw_part = 1
-    ser_num_epsi_full = 2
-    ser_num_epsi_part = 3
+    ser_num_grid_full = 2
+    ser_num_grid_part = 3
 
     dgb_raw_full = []
     dgb_raw_part = []
-    dgb_epsi_full = []
-    dgb_epsi_part = []
+    dgb_grid_full = []
+    dgb_grid_part = []
 
     try:
         for item in connection:
@@ -281,7 +285,7 @@ def process(connection, config, metadata):
             # -------------------------------------------------------------------------------------
             if isinstance(item, ismrmrd.Acquisition):
 
-                if inline_method not in ['raw', 'epsi', 'both', 'test']:
+                if inline_method not in ['raw', 'grid', 'both', 'test']:
                     msg = "Inlne process method not recognized: %s", inline_method
                     logging.error(msg)
                     raise ValueError(msg)
@@ -369,25 +373,25 @@ def process(connection, config, metadata):
                                 acq_group_raw_part = []
 
 
-                if inline_method in ['epsi','both']:
-                    if block.do_setup_epsi:
+                if inline_method in ['grid','both']:
+                    if block.do_setup_grid:
                         block.ncha, block.nx = item.data.shape
                         block.nx2 = int(block.nx // 2)
                         block.nt2 = int(block.nt // 2)
                         dims = [block.ncha, block.nt, block.nx]
-                        dims_epsi = [block.ny, block.ncha, block.nx2, block.nt2]
+                        dims_grid = [block.ny, block.ncha, block.nx2, block.nt2]
                         block.ref = np.zeros(dims, item.data.dtype)
                         block.ref_part = np.zeros(dims, item.data.dtype)        # temp storage as only FULL used to init
                         block.water_full = np.zeros(dims, item.data.dtype)
                         block.water_part = np.zeros(dims, item.data.dtype)
                         block.metab_full = np.zeros(dims, item.data.dtype)
                         block.metab_part = np.zeros(dims, item.data.dtype)
-                        block.water_epsi_full = np.zeros(dims_epsi, item.data.dtype)
-                        block.water_epsi_part = np.zeros(dims_epsi, item.data.dtype)
-                        block.metab_epsi_full = np.zeros(dims_epsi, item.data.dtype)
-                        block.metab_epsi_part = np.zeros(dims_epsi, item.data.dtype)
-                        block.blank_epsi_slice = np.zeros(dims_epsi, item.data.dtype)
-                        block.do_setup_epsi = False
+                        block.water_grid_full = np.zeros(dims_grid, item.data.dtype)
+                        block.water_grid_part = np.zeros(dims_grid, item.data.dtype)
+                        block.metab_grid_full = np.zeros(dims_grid, item.data.dtype)
+                        block.metab_grid_part = np.zeros(dims_grid, item.data.dtype)
+                        block.blank_grid_slice = np.zeros(dims_grid, item.data.dtype)
+                        block.do_setup_grid = False
                         block.ref_done = False
                         block.sampling_interval = item.sample_time_us * 1e-6
 
@@ -398,97 +402,97 @@ def process(connection, config, metadata):
                         if iset == 0:
                             ref_group_full.append(item)
                             if item.idx.contrast == 1 and flag_last_epi:
-                                process_init_epsi_full(block, ref_group_full, config, metadata)
+                                process_init_grid_full(block, ref_group_full, config, metadata)
                                 ref_group_full = []
                         else:
                             ref_group_part.append(item)
                             if item.idx.contrast == 1 and flag_last_epi:
-                                process_init_epsi_part(block, ref_group_part, config, metadata)
+                                process_init_grid_part(block, ref_group_part, config, metadata)
                                 ref_group_part = []
 
                     else:                           # Regular kspace acquisition
                         if iset == 0:
-                            acq_group_epsi_full.append(item)
+                            acq_group_grid_full.append(item)
                         else:
-                            acq_group_epsi_part.append(item)
+                            acq_group_grid_part.append(item)
 
                         if flag_last_epi:
                             if iset == 0:
-                                process_raw_to_epsi_full(block, acq_group_epsi_full)
+                                process_raw_to_grid_full(block, acq_group_grid_full)
                                 if item.idx.contrast == 1 and flag_last_yencode:
 
-                                    if block.last_zindx_epsi_full < item.idx.kspace_encode_step_2:
-                                        while block.last_zindx_epsi_full < item.idx.kspace_encode_step_2:
+                                    if block.last_zindx_grid_full < item.idx.kspace_encode_step_2:
+                                        while block.last_zindx_grid_full < item.idx.kspace_encode_step_2:
                                             # assume there was a blank slice that we've missed
-                                            images = send_epsi_blank(block, acq_group_epsi_full, metadata, ser_num_epsi_full, block.last_zindx_epsi_full, flag_full=True)
+                                            images = send_grid_blank(block, acq_group_grid_full, metadata, ser_num_grid_full, block.last_zindx_grid_full, flag_full=True)
                                             connection.send_image(images)
-                                            block.last_zindx_epsi_full += 1
+                                            block.last_zindx_grid_full += 1
 
                                     # BJS - check if the last_zindx_xxx is same as zindex in last item?
                                     #       if not, then have to send a blank slice to out and bump the
                                     #       last_zindx_xx until it is same, then continue.
 
-                                    logger_bjs.info("**** bjs - send_epsi_full() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
+                                    logger_bjs.info("**** bjs - send_grid_full() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
 
                                     if block.swap_lr:
                                         for ichan in range(block.ncha):
                                             for x in range(int(block.nx / 2)):
                                                 for t in range(int(block.nt / 2)):
-                                                    tmp = np.fliplr(np.squeeze(block.water_epsi_full[:, ichan, x, t]))
+                                                    tmp = np.fliplr(np.squeeze(block.water_grid_full[:, ichan, x, t]))
                                                     tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                    block.water_epsi_full[:, ichan, x, t] = tmp
+                                                    block.water_grid_full[:, ichan, x, t] = tmp
 
-                                                    tmp = np.fliplr(np.squeeze(block.metab_epsi_full[:, ichan, x, t]))
+                                                    tmp = np.fliplr(np.squeeze(block.metab_grid_full[:, ichan, x, t]))
                                                     tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                    block.metab_epsi_full[:, ichan, x, t] = tmp
+                                                    block.metab_grid_full[:, ichan, x, t] = tmp
 
 
-                                    images = send_epsi_full(block, acq_group_epsi_full, metadata, ser_num_epsi_full)
+                                    images = send_grid_full(block, acq_group_grid_full, metadata, ser_num_grid_full)
                                     connection.send_image(images)
-                                    block.last_zindx_epsi_full += 1
+                                    block.last_zindx_grid_full += 1
                                     block.water_full = block.water_full * 0.0
                                     block.metab_full = block.metab_full * 0.0
-                                    block.water_epsi_full = block.water_epsi_full * 0.0
-                                    block.metab_epsi_full = block.metab_epsi_full * 0.0
-                                acq_group_epsi_full = []
+                                    block.water_grid_full = block.water_grid_full * 0.0
+                                    block.metab_grid_full = block.metab_grid_full * 0.0
+                                acq_group_grid_full = []
 
                             else:
-                                process_raw_to_epsi_part(block, acq_group_epsi_part)
+                                process_raw_to_grid_part(block, acq_group_grid_part)
                                 if item.idx.contrast == 1 and flag_last_yencode:
 
-                                    if block.last_zindx_epsi_part < item.idx.kspace_encode_step_2:
-                                        while block.last_zindx_epsi_part < item.idx.kspace_encode_step_2:
+                                    if block.last_zindx_grid_part < item.idx.kspace_encode_step_2:
+                                        while block.last_zindx_grid_part < item.idx.kspace_encode_step_2:
                                             # assume there was a blank slice that we've missed
-                                            images = send_epsi_blank(block, acq_group_epsi_part, metadata, ser_num_epsi_part, block.last_zindx_epsi_part, flag_full=False)
+                                            images = send_grid_blank(block, acq_group_grid_part, metadata, ser_num_grid_part, block.last_zindx_grid_part, flag_full=False)
                                             connection.send_image(images)
-                                            block.last_zindx_epsi_part += 1
+                                            block.last_zindx_grid_part += 1
 
                                     # BJS - check if the last_zindx_xxx is same as zindex in last item?
                                     #       if not, then have to send a blank slice to out and bump the
                                     #       last_zindx_xx until it is same, then continue.
 
-                                    logger_bjs.info("**** bjs - send_epsi_part() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
+                                    logger_bjs.info("**** bjs - send_grid_part() -- zindx = %d, yindx = %d iset = %d" % (zindx, yindx, iset))
 
                                     if block.swap_lr:
                                         for ichan in range(block.ncha):
                                             for x in range(int(block.nx / 2)):
                                                 for t in range(int(block.nt / 2)):
-                                                    tmp = np.fliplr(np.squeeze(block.water_epsi_part[:, ichan, x, t]))
+                                                    tmp = np.fliplr(np.squeeze(block.water_grid_part[:, ichan, x, t]))
                                                     tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                    block.water_epsi_part[:, ichan, x, t] = tmp
+                                                    block.water_grid_part[:, ichan, x, t] = tmp
 
-                                                    tmp = np.fliplr(np.squeeze(block.metab_epsi_part[:, ichan, x, t]))
+                                                    tmp = np.fliplr(np.squeeze(block.metab_grid_part[:, ichan, x, t]))
                                                     tmp[0] = 0 + 0j  # bjs - may not need this?
-                                                    block.metab_epsi_part[:, ichan, x, t] = tmp
+                                                    block.metab_grid_part[:, ichan, x, t] = tmp
 
-                                    images = send_epsi_part(block, acq_group_epsi_part, metadata, ser_num_epsi_part)
+                                    images = send_grid_part(block, acq_group_grid_part, metadata, ser_num_grid_part)
                                     connection.send_image(images)
-                                    block.last_zindx_epsi_part += 1
+                                    block.last_zindx_grid_part += 1
                                     block.water_part = block.water_part * 0.0
                                     block.metab_part = block.metab_part * 0.0
-                                    block.water_epsi_part = block.water_epsi_part * 0.0
-                                    block.metab_epsi_part = block.metab_epsi_part * 0.0
-                                acq_group_epsi_part = []
+                                    block.water_grid_part = block.water_grid_part * 0.0
+                                    block.metab_grid_part = block.metab_grid_part * 0.0
+                                acq_group_grid_part = []
 
             elif item is None:
                 break
@@ -544,7 +548,7 @@ def process_group_raw_part(block, group, config, metadata):
     return
 
 
-def process_init_epsi_full(block, group, config, metadata):
+def process_init_grid_full(block, group, config, metadata):
     """ Format data into a [cha RO ave lin seg] array """
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -580,7 +584,7 @@ def process_init_epsi_full(block, group, config, metadata):
     block.ref_done = True
 
 
-def process_init_epsi_part(block, group, config, metadata):
+def process_init_grid_part(block, group, config, metadata):
     """ Format data into a [cha RO ave lin seg] array """
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -617,7 +621,7 @@ def process_init_epsi_part(block, group, config, metadata):
     # block.ref_done = True
 
 
-def process_raw_to_epsi_full(block, group):
+def process_raw_to_grid_full(block, group):
     ''' group is one EPI readout of water OR metab '''
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -626,11 +630,11 @@ def process_raw_to_epsi_full(block, group):
     ieco = group[0].idx.contrast
 
     if len(set(indz)) > 1:
-        logger_bjs.info("process_raw_to_epsi_full(): Too many Z encodes in TR data group")
+        logger_bjs.info("process_raw_to_grid_full(): Too many Z encodes in TR data group")
     if len(set(indy)) > 1:
-        logger_bjs.info("process_raw_to_epsi_full(): Too many Y encodes in TR data group")
+        logger_bjs.info("process_raw_to_grid_full(): Too many Y encodes in TR data group")
     if len(set(indt)) != block.nt:
-        logger_bjs.info("process_raw_to_epsi_full(): Length of segment encodes list not equal to Nt in Init data group")
+        logger_bjs.info("process_raw_to_grid_full(): Length of segment encodes list not equal to Nt in Init data group")
 
     for item in group:
         it = item.idx.segment % block.nt
@@ -642,15 +646,15 @@ def process_raw_to_epsi_full(block, group):
 
     if ieco == 0:
         dat_out = inline_do_epsi(block, block.metab_full)
-        block.metab_epsi_full[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
+        block.metab_grid_full[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
     else:
         dat_out = inline_do_epsi(block, block.water_full)
-        block.water_epsi_full[indy, :, :, :] = dat_out
+        block.water_grid_full[indy, :, :, :] = dat_out
 
     return
 
 
-def process_raw_to_epsi_part(block, group):
+def process_raw_to_grid_part(block, group):
     ''' group is one EPI readout of water OR metab '''
 
     indz = [item.idx.kspace_encode_step_2 for item in group]
@@ -659,11 +663,11 @@ def process_raw_to_epsi_part(block, group):
     ieco = group[0].idx.contrast
 
     if len(set(indz)) > 1:
-        logger_bjs.info("process_raw_to_epsi_part(): Too many Z encodes in TR data group")
+        logger_bjs.info("process_raw_to_grid_part(): Too many Z encodes in TR data group")
     if len(set(indy)) > 1:
-        logger_bjs.info("process_raw_to_epsi_part(): Too many Y encodes in TR data group")
+        logger_bjs.info("process_raw_to_grid_part(): Too many Y encodes in TR data group")
     if len(set(indt)) != block.nt:
-        logger_bjs.info("process_raw_to_epsi_part(): Length of segment encodes list not equal to Nt in Init data group")
+        logger_bjs.info("process_raw_to_grid_part(): Length of segment encodes list not equal to Nt in Init data group")
 
     for item in group:
         it = item.idx.segment % block.nt
@@ -675,10 +679,10 @@ def process_raw_to_epsi_part(block, group):
 
     if ieco == 0:
         dat_out = inline_do_epsi(block, block.metab_part)
-        block.metab_epsi_part[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
+        block.metab_grid_part[indy, :, :, :] = dat_out  # dims should be ncha, nx2, nt2 here
     else:
         dat_out = inline_do_epsi(block, block.water_part)
-        block.water_epsi_part[indy, :, :, :] = dat_out
+        block.water_grid_part[indy, :, :, :] = dat_out
 
     return
 
@@ -758,9 +762,9 @@ def send_raw_blank(block, group, metadata, ser_num, zindx, flag_full=False):
     return images
 
 
-def send_epsi_blank(block, group, metadata, ser_num, zindx, flag_full=False):
+def send_grid_blank(block, group, metadata, ser_num, zindx, flag_full=False):
 
-    #zindx = block.last_zindx_epsi_full
+    #zindx = block.last_zindx_grid_full
     images = []
 
     posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
@@ -789,11 +793,11 @@ def send_epsi_blank(block, group, metadata, ser_num, zindx, flag_full=False):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        #metab = block.metab_epsi_full[:, icha, :, :].copy()
-        #water = block.water_epsi_full[:, icha, :, :].copy()
+        #metab = block.metab_grid_full[:, icha, :, :].copy()
+        #water = block.water_grid_full[:, icha, :, :].copy()
 
-        metab = block.blank_epsi_slice[:, icha, :, :].copy()
-        water = block.blank_epsi_slice[:, icha, :, :].copy()
+        metab = block.blank_grid_slice[:, icha, :, :].copy()
+        water = block.blank_grid_slice[:, icha, :, :].copy()
 
         metab = np.squeeze(metab)
         water = np.squeeze(water)
@@ -813,8 +817,8 @@ def send_epsi_blank(block, group, metadata, ser_num, zindx, flag_full=False):
         tmpImgMet.image_series_index = ser_num
         tmpImgWat.image_series_index = ser_num
 
-        tmpImgMet.image_index = block.out_indx_epsi + 0
-        tmpImgWat.image_index = block.out_indx_epsi + 1
+        tmpImgMet.image_index = block.out_indx_grid + 0
+        tmpImgWat.image_index = block.out_indx_grid + 1
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -829,7 +833,7 @@ def send_epsi_blank(block, group, metadata, ser_num, zindx, flag_full=False):
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
-        block.out_indx_epsi += 2
+        block.out_indx_grid += 2
 
     return images
 
@@ -966,9 +970,9 @@ def send_raw_part(block, group, metadata, ser_num):
     return images
 
 
-def send_epsi_full(block, group, metadata, ser_num):
+def send_grid_full(block, group, metadata, ser_num):
 
-    zindx = block.last_zindx_epsi_full
+    zindx = block.last_zindx_grid_full
     images = []
 
     posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
@@ -990,8 +994,8 @@ def send_epsi_full(block, group, metadata, ser_num):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab_epsi_full[:, icha, :, :].copy()
-        water = block.water_epsi_full[:, icha, :, :].copy()
+        metab = block.metab_grid_full[:, icha, :, :].copy()
+        water = block.water_grid_full[:, icha, :, :].copy()
 
         metab = np.squeeze(metab)
         water = np.squeeze(water)
@@ -1011,8 +1015,8 @@ def send_epsi_full(block, group, metadata, ser_num):
         tmpImgMet.image_series_index = ser_num
         tmpImgWat.image_series_index = ser_num
 
-        tmpImgMet.image_index = block.out_indx_epsi + 0
-        tmpImgWat.image_index = block.out_indx_epsi + 1
+        tmpImgMet.image_index = block.out_indx_grid + 0
+        tmpImgWat.image_index = block.out_indx_grid + 1
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -1027,14 +1031,14 @@ def send_epsi_full(block, group, metadata, ser_num):
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
-        block.out_indx_epsi += 2
+        block.out_indx_grid += 2
 
     return images
 
 
-def send_epsi_part(block, group, metadata, ser_num):
+def send_grid_part(block, group, metadata, ser_num):
 
-    zindx = block.last_zindx_epsi_part
+    zindx = block.last_zindx_grid_part
     images = []
 
     posvecx, posvecy, posvecz = calc_posvec(block, zindx, metadata)
@@ -1056,8 +1060,8 @@ def send_epsi_part(block, group, metadata, ser_num):
         # with this option, can take input as: [cha z y x], [z y x], [y x], or [x]
         # For spectroscopy data, dimensions are: [z y t], i.e. [SEG LIN COL] (PAR would be 3D)
 
-        metab = block.metab_epsi_part[:, icha, :, :].copy()
-        water = block.water_epsi_part[:, icha, :, :].copy()
+        metab = block.metab_grid_part[:, icha, :, :].copy()
+        water = block.water_grid_part[:, icha, :, :].copy()
 
         metab = np.squeeze(metab)
         water = np.squeeze(water)
@@ -1077,8 +1081,8 @@ def send_epsi_part(block, group, metadata, ser_num):
         tmpImgMet.image_series_index = ser_num
         tmpImgWat.image_series_index = ser_num
 
-        tmpImgMet.image_index = block.out_indx_epsi + 0
-        tmpImgWat.image_index = block.out_indx_epsi + 1
+        tmpImgMet.image_index = block.out_indx_grid + 0
+        tmpImgWat.image_index = block.out_indx_grid + 1
 
         # 2D spectroscopic imaging
         tmpImgMet.field_of_view = (ctypes.c_float(block.fovx),ctypes.c_float(block.fovy),ctypes.c_float(block.fovz))
@@ -1093,7 +1097,7 @@ def send_epsi_part(block, group, metadata, ser_num):
         images.append(tmpImgMet)
         images.append(tmpImgWat)
 
-        block.out_indx_epsi += 2
+        block.out_indx_grid += 2
 
     return images
 
