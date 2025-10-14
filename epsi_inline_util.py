@@ -286,6 +286,8 @@ def inline_init_interp_kx(block):
         # - get points to interpolate the samples at
         # - echo shift is actual echo position, not correction, so no need
         #    to make negative
+        # - FWIW, offline epsi created separate xino/e arrays for each epi
+        #   readout. They were all the same numbers. So just one copy here.
         temp = np.r_[k_traj[0, :], k_traj[1, 0]]
         time_samples = samples + block.echo_shifts[ichan, 0]
         func = splrep(temp, time_samples, s=0)
@@ -404,7 +406,7 @@ def inline_process_kx(block, data):
         odd_arr = np.array(tmp_odd).T
         res_odd = inline_idl_interpolate(xino, odd_arr, cubic=-0.5, missing=0.0)
 
-        evn_arr = np.array(tmp_odd).T
+        evn_arr = np.array(tmp_evn).T
         res_evn = inline_idl_interpolate(xine, evn_arr, cubic=-0.5, missing=0.0)
 
         if xino[0] < 0:       # match IDL interpolate(missing=0) keyword option
