@@ -129,6 +129,9 @@ def inline_calc_average_center_of_mass(data):
     Calc center of mass left to right, then right to left, return midway point.
 
     """
+    if np.sum(data) == 0:       # bjs ccx - hack to get data to work
+        return len(data)/2
+
     x1, y1, slope1 = inline_calc_center_of_mass(data)
     x2, y2, slope2 = inline_calc_center_of_mass(data[::-1])
 
@@ -204,6 +207,9 @@ def inline_calc_freq_drift(block, data, ichan):
     fid = shift(fft(shift(fid), overwrite_x=True))
     indx = np.argmax(abs(fid)) - nt2
     hz = indx * block.sw / block.nt
+
+    if np.sum(fid) == 0:        # bjs ccx
+        hz = 0.0
 
     return hz
 
